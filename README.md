@@ -1,1 +1,2 @@
-# Medical-Scribe
+hello buddy
+nice to meet u 
