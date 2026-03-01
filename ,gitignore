@@ -1,0 +1,18 @@
+# Python environment
+venv/
+__pycache__/
+*.pyc
+
+# Sensitive Data
+.env
+data/raw/
+data/processed/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Large 3D Models (optional, if using external hosting)
+# assets/body_models/*.obj
