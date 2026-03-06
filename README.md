@@ -51,10 +51,4 @@ Medical-Scribe/
 ├── docs/                   # Research papers and architecture diagrams
 └── requirements.txt        # Python dependencies
 =======
-# Medical-Scribe
-hello
-hey there avva 
-i love u
-helloooooooooooooooooooooooooooooooooo
-hello enavarey
->>>>>>> Stashed changes
+
