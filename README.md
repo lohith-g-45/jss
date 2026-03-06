@@ -1,8 +1,10 @@
-<<<<<<< Updated upstream
 # Medical-Scribe 🏥
 
 > An AI-powered medical documentation assistant that helps doctors AND patients understand what's happening during consultations
 
+Ever walked out of a doctor's appointment confused about what just happened? Or watched doctors spend more time typing than talking to you? Yeah, we've all been there.
+
+Medical-Scribe is my attempt at fixing this. It's an intelligent healthcare assistant that listens to doctor-patient conversations, automatically documents everything, and then shows patients a visual 3D representation of what's going on with their body. Think of it as having a super-smart note-taker who can also explain things in a way that actually makes sense.
 
 ## What Can It Do?
 
@@ -25,7 +27,7 @@
 - Works with Indian regional languages too! (Hinglish, Kannada-English, etc.)
 - Because not everyone is comfortable speaking pure English in a hospital setting
 
-## Tech Stack(Planned)
+## Tech Stack (Planned)
 
 I'm planning to build this with:
 - **Frontend:** React.js or Next.js for the web interface
@@ -45,5 +47,13 @@ Medical-Scribe/
 ├── data/                   # Links to datasets (MIMIC-III, BodyParts3D, etc.)
 ├── docs/                   # Research papers and architecture diagrams
 └── requirements.txt        # Python dependencies
-=======
+```
+
+## Contributing
+
+Feel free to open issues or submit pull requests if you have ideas for improvements!
+
+## License
+
+This project is currently under development.
 
