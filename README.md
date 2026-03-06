@@ -4,11 +4,6 @@
 > An AI-powered medical documentation assistant that helps doctors AND patients understand what's happening during consultations
 
 
-
-Ever walked out of a doctor's appointment confused about what just happened? Or watched doctors spend more time typing than talking to you? Yeah, we've all been there.
-
-Medical-Scribe is my attempt at fixing this. It's an intelligent healthcare assistant that listens to doctor-patient conversations, automatically documents everything, and then shows patients a visual 3D representation of what's going on with their body. Think of it as having a super-smart note-taker who can also explain things in a way that actually makes sense.
-
 ## What Can It Do?
 
 **Real-Time Transcription & Smart Documentation**
