@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 # Medical-Scribe 🏥
 
 > An AI-powered medical documentation assistant that helps doctors AND patients understand what's happening during consultations
@@ -49,3 +50,11 @@ Medical-Scribe/
 ├── data/                   # Links to datasets (MIMIC-III, BodyParts3D, etc.)
 ├── docs/                   # Research papers and architecture diagrams
 └── requirements.txt        # Python dependencies
+=======
+# Medical-Scribe
+hello
+hey there avva 
+i love u
+helloooooooooooooooooooooooooooooooooo
+hello enavarey
+>>>>>>> Stashed changes
