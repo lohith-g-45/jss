@@ -47,13 +47,3 @@ Medical-Scribe/
 ├── data/                   # Links to datasets (MIMIC-III, BodyParts3D, etc.)
 ├── docs/                   # Research papers and architecture diagrams
 └── requirements.txt        # Python dependencies
-```
-
-## Contributing
-
-Feel free to open issues or submit pull requests if you have ideas for improvements!
-
-## License
-
-This project is currently under development.
-
