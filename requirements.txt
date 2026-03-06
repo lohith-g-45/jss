@@ -1,0 +1,19 @@
+# Speech Recognition & Audio
+openai-whisper          # High-accuracy transcription
+SpeechRecognition       # Microphone interface
+pydub                   # Audio manipulation
+
+# Medical NLP & Processing
+spacy                   # Core NLP framework
+https://github.com/kormilitzin/med7/releases/download/v1.0/en_core_med7_lg.tar.gz # Specialized Medical NER
+scikit-learn            # For predictive clinical insights
+pandas                  # Data handling (MIMIC-III/MTSamples)
+numpy                   # Numerical operations
+
+# Backend API
+fastapi                 # High-performance web framework
+uvicorn                 # ASGI server for FastAPI
+python-multipart        # For file uploads
+
+# 3D Data Processing
+open3d                  # 3D mesh and point cloud handling
