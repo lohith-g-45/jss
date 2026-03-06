@@ -3,7 +3,7 @@
 
 > An AI-powered medical documentation assistant that helps doctors AND patients understand what's happening during consultations
 
-## What's This About?
+
 
 Ever walked out of a doctor's appointment confused about what just happened? Or watched doctors spend more time typing than talking to you? Yeah, we've all been there.
 
