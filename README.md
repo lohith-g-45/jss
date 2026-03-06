@@ -1,4 +1,5 @@
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 # Medical-Scribe 🏥
 
 > An AI-powered medical documentation assistant that helps doctors AND patients understand what's happening during consultations
@@ -47,3 +48,11 @@ Medical-Scribe/
 └── requirements.txt        # Python dependencies
 =======
 
+=======
+# Medical-Scribe
+hello
+hey there avva 
+i love u
+helloooooooooooooooooooooooooooooooooo
+hello enavarey
+>>>>>>> Stashed changes
