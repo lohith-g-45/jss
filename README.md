@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+>>>>>>> 5a8db94df33a903cbc8477d373dec8965556253f
 # Medical-Scribe 🏥
 
 > An AI-powered medical documentation assistant that helps doctors AND patients understand what's happening during consultations
@@ -36,5 +40,26 @@ I'm planning to build this with:
 - **AI/ML:** Python for the backend, OpenAI Whisper for speech recognition, SpaCy/Med7 for medical NLP, and TensorFlow or PyTorch for the predictive models
 - **Database:** MongoDB or PostgreSQL - whatever works best for HIPAA compliance
 
-=======
+## Project Structure
 
+```
+Medical-Scribe/
+├── src/
+│   ├── ai_engine/          # All the speech-to-text and NLP magic
+│   ├── visualization/      # 3D body models and mapping logic
+│   ├── analytics/          # Predictive algorithms
+│   └── web_app/            # Dashboards for patients and doctors
+├── data/                   # Links to datasets (MIMIC-III, BodyParts3D, etc.)
+├── docs/                   # Research papers and architecture diagrams
+└── requirements.txt        # Python dependencies
+```
+
+## Contributing
+
+Feel free to open issues or submit pull requests if you have ideas for improvements!
+
+## License
+
+This project is currently under development.
+
+=======
