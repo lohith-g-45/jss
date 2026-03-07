@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
->>>>>>> 5a8db94df33a903cbc8477d373dec8965556253f
+
 # Medical-Scribe 🏥
 
 > An AI-powered medical documentation assistant that helps doctors AND patients understand what's happening during consultations
@@ -53,13 +49,4 @@ Medical-Scribe/
 ├── docs/                   # Research papers and architecture diagrams
 └── requirements.txt        # Python dependencies
 ```
-
-## Contributing
-
-Feel free to open issues or submit pull requests if you have ideas for improvements!
-
-## License
-
-This project is currently under development.
-
-=======
+=
