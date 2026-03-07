@@ -228,20 +228,4 @@ This is a demonstration project. For production use:
 6. Set up CI/CD pipeline
 7. Add logging and monitoring
 
-## 📄 License
 
-MIT License - feel free to use this for your projects!
-
-## 🙏 Acknowledgments
-
-- Inspired by modern healthcare platforms like Sunoh.ai
-- Built with modern React best practices
-- Designed for medical professionals
-
-## 📞 Support
-
-For issues or questions, please open an issue in the repository.
-
----
-
-**Built with ❤️ for healthcare professionals**
