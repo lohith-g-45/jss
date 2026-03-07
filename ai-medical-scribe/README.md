@@ -210,22 +210,4 @@ To connect to a real backend:
 - HIPAA compliance ready (add encryption for PHI data)
 - Input validation and sanitization
 
-## 📱 Browser Support
-
-- Chrome/Edge (latest 2 versions)
-- Firefox (latest 2 versions)
-- Safari (latest 2 versions)
-
-## 🤝 Contributing
-
-This is a demonstration project. For production use:
-
-1. Implement proper authentication and authorization
-2. Add HIPAA compliance measures
-3. Implement data encryption for PHI
-4. Add comprehensive error handling
-5. Include unit and integration tests
-6. Set up CI/CD pipeline
-7. Add logging and monitoring
-
 
