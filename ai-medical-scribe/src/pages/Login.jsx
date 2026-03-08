@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, Stethoscope } from 'lucide-react';
+import { Mail, Eye, EyeOff, Stethoscope } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { login as apiLogin } from '../services/api';
-import { mockUser } from '../utils/mockData';
 import { useToast } from '../components/Toast';
 import Loading from '../components/Loading';
 
@@ -14,10 +13,11 @@ const Login = () => {
   const toast = useToast();
   
   const [formData, setFormData] = useState({
-    email: 'sarah.johnson@hospital.com',
-    password: 'password123',
+    email: '',
+    password: '',
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
 
   const handleChange = (e) => {
@@ -50,16 +50,12 @@ const Login = () => {
 
     setIsLoading(true);
     try {
-      // For demo purposes, use mock data
-      // In production, use: const response = await apiLogin(formData.email, formData.password);
-      
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-      
-      login(mockUser);
+      const response = await apiLogin(formData.email, formData.password);
+      login(response.user);
       toast.success('Login successful!');
       navigate('/dashboard');
     } catch (error) {
-      toast.error(error.message || 'Login failed. Please try again.');
+      toast.error(error.error || error.message || 'Login failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -109,14 +105,15 @@ const Login = () => {
                 Email Address
               </label>
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <Mail className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
                 <input
                   type="email"
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  className={`input-field pl-12 ${errors.email ? 'border-red-500' : ''}`}
+                  className={`input-field pr-12 ${errors.email ? 'border-red-500' : ''}`}
                   placeholder="doctor@hospital.com"
+                  autoComplete="email"
                 />
               </div>
               {errors.email && (
@@ -130,14 +127,22 @@ const Login = () => {
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   name="password"
                   value={formData.password}
                   onChange={handleChange}
-                  className={`input-field pl-12 ${errors.password ? 'border-red-500' : ''}`}
+                  className={`input-field pr-12 ${errors.password ? 'border-red-500' : ''}`}
                   placeholder="Enter your password"
+                  autoComplete="current-password"
                 />
               </div>
               {errors.password && (
@@ -180,16 +185,29 @@ const Login = () => {
             </motion.button>
           </form>
 
-          {/* Demo Credentials */}
+          {/* DB Login Hint */}
           <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
             <p className="text-xs text-blue-800 font-medium mb-2">
-              Demo Credentials:
+              Sign in with credentials stored in your database:
             </p>
             <p className="text-xs text-blue-700">
-              Email: sarah.johnson@hospital.com
+              Example Email: sarah.johnson@hospital.com
             </p>
             <p className="text-xs text-blue-700">
-              Password: password123
+              Example Password: password123
+            </p>
+          </div>
+
+          <div className="mt-4 text-center">
+            <p className="text-sm text-gray-600">
+              New user?{' '}
+              <button
+                type="button"
+                onClick={() => navigate('/register')}
+                className="text-primary hover:text-blue-700 font-medium"
+              >
+                Create account
+              </button>
             </p>
           </div>
         </motion.div>

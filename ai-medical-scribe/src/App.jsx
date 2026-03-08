@@ -6,6 +6,7 @@ import DashboardLayout from './components/layout/DashboardLayout';
 
 // Pages
 import Login from './pages/Login';
+import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import StartConsultation from './pages/StartConsultation';
 import GeneratedNotes from './pages/GeneratedNotes';
@@ -36,6 +37,7 @@ function App() {
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         
         {/* Protected Routes */}
         <Route

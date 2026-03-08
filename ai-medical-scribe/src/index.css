@@ -56,6 +56,16 @@ body {
   transition: all 0.2s;
 }
 
+/* Keep browser/password-manager overlays from colliding with typed text */
+input.input-field {
+  background-clip: padding-box;
+}
+
+input.input-field::-ms-reveal,
+input.input-field::-ms-clear {
+  display: none;
+}
+
 .input-field:focus {
   ring: 2px;
   ring-color: #2563EB;

@@ -3,78 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Sparkles, User, Calendar, ArrowRight, UserCircle, Stethoscope } from 'lucide-react';
 import Header from '../components/layout/Header';
-import AudioRecorder from '../components/AudioRecorder';
 import TranscriptBox from '../components/TranscriptBox';
 import { useAppContext } from '../context/AppContext';
-import { generateNotes } from '../services/api';
-import { mockSOAPNotes } from '../utils/mockData';
+import { createPatient, generateNotes, uploadAudio } from '../services/api';
 import { useToast } from '../components/Toast';
 import Loading from '../components/Loading';
-
-// Helper function to generate SOAP notes from conversation
-const generateSOAPFromConversation = (transcript, patientInfo) => {
-  if (!transcript || transcript.trim().length === 0) {
-    return mockSOAPNotes;
-  }
-
-  // Parse the conversation
-  const lines = transcript.split('\n').filter(line => line.trim());
-  const patientStatements = [];
-  const doctorStatements = [];
-  
-  lines.forEach(line => {
-    if (line.startsWith('Patient:')) {
-      patientStatements.push(line.replace('Patient:', '').trim());
-    } else if (line.startsWith('Doctor:')) {
-      doctorStatements.push(line.replace('Doctor:', '').trim());
-    }
-  });
-
-  // Extract key information from patient statements
-  const symptoms = patientStatements.filter(s => 
-    s.toLowerCase().includes('pain') || 
-    s.toLowerCase().includes('hurt') || 
-    s.toLowerCase().includes('feel') ||
-    s.toLowerCase().includes('symptom') ||
-    s.toLowerCase().includes('problem')
-  );
-
-  const duration = patientStatements.find(s => 
-    s.toLowerCase().includes('day') || 
-    s.toLowerCase().includes('week') || 
-    s.toLowerCase().includes('month') ||
-    s.toLowerCase().includes('year')
-  );
-
-  // Generate SOAP notes
-  const subjective = symptoms.length > 0 
-    ? `Patient ${patientInfo?.patientName || 'reports'} ${symptoms.join('. ')}.${duration ? ' ' + duration : ''}`
-    : `Patient presents with concerns discussed during consultation. ${patientStatements.slice(0, 2).join('. ')}.`;
-
-  const objective = `Patient: ${patientInfo?.patientName || 'Unknown'}, Age: ${patientInfo?.age || 'Unknown'}, Gender: ${patientInfo?.gender || 'Unknown'}. Visit Date: ${patientInfo?.dateOfVisit || new Date().toISOString().split('T')[0]}. General appearance normal. Vital signs within normal limits.`;
-
-  const assessment = symptoms.length > 0 
-    ? `Based on patient history and examination, assessment indicates ${symptoms[0]?.toLowerCase().includes('pain') ? 'pain management required' : 'further evaluation needed'}.`
-    : 'Clinical assessment based on consultation findings. Further diagnostic evaluation may be warranted.';
-
-  const plan = doctorStatements.length > 1
-    ? `Treatment plan discussed: ${doctorStatements.slice(0, 2).join('. ')}. Follow-up scheduled as needed.`
-    : 'Continue monitoring. Follow-up appointment recommended. Patient education provided regarding condition management.';
-
-  return {
-    subjective,
-    objective,
-    assessment,
-    plan,
-    patientName: patientInfo?.patientName,
-    patientAge: patientInfo?.age,
-    patientGender: patientInfo?.gender,
-    visitDate: patientInfo?.dateOfVisit,
-    diagnosis: 'To be determined based on further evaluation',
-    medications: 'As discussed during consultation',
-    followUp: 'Schedule follow-up as needed',
-  };
-};
 
 const StartConsultation = () => {
   const navigate = useNavigate();
@@ -87,6 +20,9 @@ const StartConsultation = () => {
     setGeneratedNotes,
     patientInfo,
     setPatientInfo,
+    audioBlob,
+    setAudioBlob,
+    user,
   } = useAppContext();
 
   // Step management
@@ -101,115 +37,72 @@ const StartConsultation = () => {
   });
   const [formErrors, setFormErrors] = useState({});
 
-  // Speech recognition
-  const recognitionRef = useRef(null);
-  const [isListening, setIsListening] = useState(false);
+  // Recording/transcription state
   const [hasRecorded, setHasRecorded] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   
-  // Speaker tracking - automatic alternation
+  // Speaker tracking from backend live pipeline
   const [currentSpeaker, setCurrentSpeaker] = useState('Doctor'); // 'Doctor' or 'Patient'
   const lastSpeakerRef = useRef('Doctor');
-  const lastSpeechTimeRef = useRef(Date.now());
-  const silenceThreshold = 2000; // 2 seconds of silence triggers speaker change
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const mediaStreamRef = useRef(null);
+  const wsRef = useRef(null);
+  const timerRef = useRef(null);
 
-  // Initialize speech recognition
-  useEffect(() => {
-    console.log('Initializing speech recognition...');
-    console.log('webkitSpeechRecognition available:', 'webkitSpeechRecognition' in window);
-    console.log('SpeechRecognition available:', 'SpeechRecognition' in window);
-    
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'en-US';
-      
-      console.log('Speech recognition initialized successfully');
+  const getWsUrl = () => {
+    const aiBase = import.meta.env.VITE_AI_API_URL || 'http://localhost:8000/api';
+    const wsBase = aiBase.replace(/^http/i, 'ws').replace(/\/api\/?$/, '');
+    return `${wsBase}/ws/consult-${Date.now()}`;
+  };
 
-      recognitionRef.current.onresult = (event) => {
-        console.log('Speech recognition result received!');
-        let finalTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcriptPiece = event.results[i][0].transcript;
-          console.log('Transcript piece:', transcriptPiece, 'isFinal:', event.results[i].isFinal);
-          if (event.results[i].isFinal) {
-            finalTranscript += transcriptPiece + ' ';
-          }
-        }
-
-        if (finalTranscript) {
-          const now = Date.now();
-          const timeSinceLastSpeech = now - lastSpeechTimeRef.current;
-          
-          // Auto-switch speaker if there was a pause (silence) > threshold
-          let speakerToUse = lastSpeakerRef.current;
-          if (timeSinceLastSpeech > silenceThreshold) {
-            // Alternate speaker
-            speakerToUse = lastSpeakerRef.current === 'Doctor' ? 'Patient' : 'Doctor';
-            lastSpeakerRef.current = speakerToUse;
-            setCurrentSpeaker(speakerToUse);
-          }
-          
-          lastSpeechTimeRef.current = now;
-          
-          // Add transcript with speaker label
-          setTranscript((prev) => {
-            if (prev === '' || timeSinceLastSpeech > silenceThreshold) {
-              return prev + `\n\n${speakerToUse}: ${finalTranscript}`;
-            } else {
-              return prev + finalTranscript;
-            }
-          });
-        }
-      };
-
-      recognitionRef.current.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        if (event.error === 'no-speech') {
-          console.log('No speech detected, continuing...');
-          // Don't show toast for no-speech, just continue
-        } else if (event.error === 'not-allowed') {
-          toast.error('Microphone access denied. Please allow microphone permissions.');
-          setIsRecording(false);
-          setIsListening(false);
-        } else if (event.error !== 'aborted') {
-          toast.error(`Speech recognition error: ${event.error}`);
-        }
-      };
-
-      recognitionRef.current.onend = () => {
-        console.log('Recognition ended, isListening:', isListening);
-        // Restart if still supposed to be recording
-        if (isListening) {
-          try {
-            console.log('Restarting recognition...');
-            recognitionRef.current.start();
-          } catch (error) {
-            console.error('Error restarting recognition:', error);
-          }
-        }
-      };
-
-      recognitionRef.current.onstart = () => {
-        console.log('Speech recognition started');
-      };
-    } else {
-      toast.error('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.');
+  const appendTranscriptLine = (speaker, text) => {
+    if (!text?.trim()) {
+      return;
     }
 
+    setTranscript((prev) => {
+      const normalized = text.trim();
+      if (!prev?.trim()) {
+        return `${speaker}: ${normalized}`;
+      }
+      return `${prev}\n\n${speaker}: ${normalized}`;
+    });
+  };
+
+  const startTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    timerRef.current = setInterval(() => {
+      setRecordingSeconds((prev) => prev + 1);
+    }, 1000);
+  };
+
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const closeWebSocket = () => {
+    if (wsRef.current && wsRef.current.readyState < WebSocket.CLOSING) {
+      wsRef.current.close();
+    }
+    wsRef.current = null;
+  };
+
+  useEffect(() => {
     return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (error) {
-          console.error('Error stopping recognition:', error);
-        }
+      stopTimer();
+      closeWebSocket();
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
-  }, []); // Empty dependency array - only initialize once
+  }, []);
 
   // Handle form input changes
   const handleFormChange = (e) => {
@@ -228,7 +121,7 @@ const StartConsultation = () => {
   };
 
   // Submit patient form
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
     const errors = validateForm();
     
@@ -238,79 +131,152 @@ const StartConsultation = () => {
       return;
     }
 
-    setPatientInfo(formData);
-    setCurrentStep(2);
-    toast.success('Patient information saved. Ready to start consultation.');
+    try {
+      const patientPayload = {
+        patient_name: formData.patientName,
+        age: Number(formData.age),
+        gender: formData.gender,
+        medical_history: '',
+      };
+
+      const created = await createPatient(patientPayload);
+      setPatientInfo({ ...formData, id: created.patient_id, doctorId: user?.id });
+      setCurrentStep(2);
+      toast.success('Patient information saved. Ready to start consultation.');
+    } catch (error) {
+      toast.error(error?.error || 'Failed to save patient information');
+    }
   };
 
   // Start recording and speech recognition
-  const handleStartRecording = () => {
+  const handleStartRecording = async () => {
     setTranscript('');
+    setAudioBlob(null);
     setIsRecording(true);
-    setIsListening(true);
-    setHasRecorded(true);
+    setHasRecorded(false);
+    setRecordingSeconds(0);
     setCurrentSpeaker('Doctor');
     lastSpeakerRef.current = 'Doctor';
-    lastSpeechTimeRef.current = Date.now();
-    
-    if (recognitionRef.current) {
-      try {
-        console.log('Starting speech recognition...');
-        recognitionRef.current.start();
-        toast.success('Recording started. Speak clearly into your microphone.');
-      } catch (error) {
-        console.error('Error starting recognition:', error);
-        if (error.message.includes('already started')) {
-          console.log('Recognition already running');
-        } else {
-          toast.error('Failed to start recording. Please try again.');
-          setIsRecording(false);
-          setIsListening(false);
+
+    try {
+      const ws = new WebSocket(getWsUrl());
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type !== 'pipeline_result') {
+            return;
+          }
+
+          const speaker = payload.speaker || lastSpeakerRef.current || 'Unknown';
+          const text = payload.translated_text || payload.original_text || '';
+
+          if (text.trim()) {
+            lastSpeakerRef.current = speaker;
+            setCurrentSpeaker(speaker);
+            appendTranscriptLine(speaker, text);
+          }
+        } catch (err) {
+          console.error('Invalid WS message:', err);
         }
-      }
-    } else {
-      toast.error('Speech recognition not initialized. Please refresh the page.');
+      };
+
+      ws.onerror = () => {
+        toast.error('Live transcription socket error. Please restart recording.');
+      };
+
+      mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+      const supportedType = mimeTypes.find((m) => MediaRecorder.isTypeSupported(m));
+      mediaRecorderRef.current = supportedType
+        ? new MediaRecorder(mediaStreamRef.current, { mimeType: supportedType })
+        : new MediaRecorder(mediaStreamRef.current);
+      audioChunksRef.current = [];
+
+      mediaRecorderRef.current.ondataavailable = async (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            const chunkBytes = await event.data.arrayBuffer();
+            wsRef.current.send(chunkBytes);
+          }
+        }
+      };
+
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        setAudioBlob(blob);
+        setHasRecorded(true);
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        }
+      };
+
+      mediaRecorderRef.current.start(1200);
+      startTimer();
+    } catch (error) {
+      console.error('Error starting media recorder:', error);
+      const isPermissionError =
+        error?.name === 'NotAllowedError' ||
+        error?.name === 'SecurityError' ||
+        error?.name === 'NotFoundError';
+
+      toast.error(
+        isPermissionError
+          ? 'Microphone access failed. Enable Chrome microphone permission and ensure no other app is using it.'
+          : 'Failed to start live recording. Please try again.'
+      );
+      setIsRecording(false);
+      stopTimer();
+      closeWebSocket();
     }
   };
 
   // Stop recording and speech recognition
   const handleStopRecording = () => {
     console.log('Stopping recording...');
-    setIsListening(false); // Set this first so onend doesn't restart
     setIsRecording(false);
-    
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-        toast.info('Recording stopped.');
-      } catch (error) {
-        console.error('Error stopping recognition:', error);
-      }
-    }
-  };
+    stopTimer();
 
-  const handleRecordingComplete = async (audioBlob) => {
-    // Audio blob is captured but we're using live transcription
-    setHasRecorded(true);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+
+    closeWebSocket();
+    toast.info('Recording stopped.');
   };
 
   const handleGenerateNotes = async () => {
-    if (!transcript || transcript.trim().length === 0) {
-      toast.warning('No transcript available. Please record a consultation first.');
+    if ((!transcript || transcript.trim().length === 0) && !audioBlob) {
+      toast.warning('No consultation input available. Please record first.');
       return;
     }
 
     setIsGenerating(true);
     try {
       toast.info('Generating AI medical notes...');
-      
-      // In production, use: const result = await generateNotes(transcript, patientInfo);
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      
-      // Generate SOAP notes from conversation
-      const enhancedNotes = generateSOAPFromConversation(transcript, patientInfo);
-      
-      setGeneratedNotes(enhancedNotes);
+
+      const result = transcript?.trim()
+        ? await generateNotes(transcript, patientInfo)
+        : await uploadAudio(audioBlob, patientInfo);
+
+      const backendTranscript = result?.transcript || transcript;
+      if (backendTranscript) {
+        setTranscript(backendTranscript);
+      }
+
+      const soap = result?.soap_notes || {};
+      const mappedNotes = {
+        chiefComplaint: soap.chief_complaint || '',
+        historyOfPresentIllness: soap.history || '',
+        pastMedicalHistory: '',
+        assessment: soap.assessment || '',
+        plan: soap.plan || '',
+      };
+
+      setGeneratedNotes(mappedNotes);
       toast.success('Medical notes generated successfully!');
       
       // Navigate to notes page
@@ -318,7 +284,7 @@ const StartConsultation = () => {
         navigate('/notes');
       }, 500);
     } catch (error) {
-      toast.error('Failed to generate notes');
+      toast.error(error?.error || 'Failed to generate notes');
       console.error('Note generation error:', error);
     } finally {
       setIsGenerating(false);
@@ -505,7 +471,7 @@ const StartConsultation = () => {
                 <div className="card text-center">
                   <div className="mb-6">
                     <div className="text-5xl font-bold text-gray-900 mb-2">
-                      {Math.floor(Math.random() * 10)}:{Math.floor(Math.random() * 60).toString().padStart(2, '0')}
+                      {Math.floor(recordingSeconds / 60).toString().padStart(2, '0')}:{(recordingSeconds % 60).toString().padStart(2, '0')}
                     </div>
                     <p className="text-sm text-gray-500">
                       {isRecording ? 'Recording in progress...' : 'Ready to record'}
@@ -609,7 +575,7 @@ const StartConsultation = () => {
               </div>
 
               {/* Generate Notes Button */}
-              {hasRecorded && transcript && (
+              {hasRecorded && (transcript || audioBlob) && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -664,11 +630,11 @@ const StartConsultation = () => {
                     </li>
                     <li className="flex items-start">
                       <span className="font-semibold text-primary mr-2">2.</span>
-                      <span>Speak naturally - the system <strong>automatically detects</strong> speaker changes based on pauses</span>
+                      <span>Speak naturally; audio is streamed live to Whisper in the backend.</span>
                     </li>
                     <li className="flex items-start">
                       <span className="font-semibold text-primary mr-2">3.</span>
-                      <span>Conversation is transcribed with Doctor/Patient labels in real-time (switches after 2-second pauses)</span>
+                      <span>Transcript updates in real-time with Doctor/Patient labels from AI speaker classification.</span>
                     </li>
                     <li className="flex items-start">
                       <span className="font-semibold text-primary mr-2">4.</span>

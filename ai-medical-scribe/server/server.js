@@ -5,9 +5,34 @@ require('dotenv').config();
 
 const app = express();
 
+const defaultAllowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5174',
+];
+
+const envAllowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins = new Set([...defaultAllowedOrigins, ...envAllowedOrigins]);
+
 // Middleware
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5174',
+  origin(origin, callback) {
+    // Allow server-to-server or curl requests with no Origin header.
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.has(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
   credentials: true
 }));
 app.use(bodyParser.json({ limit: '50mb' }));
@@ -17,11 +42,13 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 const authRoutes = require('./routes/auth');
 const patientRoutes = require('./routes/patients');
 const consultationRoutes = require('./routes/consultations');
+const userRoutes = require('./routes/users');
 
 // Use routes
 app.use('/api/auth', authRoutes);
 app.use('/api/patients', patientRoutes);
 app.use('/api/consultations', consultationRoutes);
+app.use('/api/users', userRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

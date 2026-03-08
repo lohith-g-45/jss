@@ -6,7 +6,7 @@ import Header from '../components/layout/Header';
 import PatientTable from '../components/PatientTable';
 import SearchBar from '../components/SearchBar';
 import Loading from '../components/Loading';
-import { mockPatients } from '../utils/mockData';
+import { fetchPatients, fetchConsultations } from '../services/api';
 import { debounce } from '../utils/helpers';
 
 const PatientRecords = () => {
@@ -28,12 +28,42 @@ const PatientRecords = () => {
   const loadPatients = async () => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setPatients(mockPatients);
-      setFilteredPatients(mockPatients);
+      const [patientsRes, consultationsRes] = await Promise.all([
+        fetchPatients('', 200, 0),
+        fetchConsultations({ limit: 500, offset: 0 }),
+      ]);
+
+      const patientsList = patientsRes?.patients || [];
+      const consultations = consultationsRes?.consultations || [];
+
+      const consultationsByPatient = consultations.reduce((acc, c) => {
+        const key = String(c.patient_id);
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(c);
+        return acc;
+      }, {});
+
+      const mappedPatients = patientsList.map((p) => {
+        const patientConsultations = consultationsByPatient[String(p.id)] || [];
+        const latest = patientConsultations[0] || null;
+
+        return {
+          id: p.id,
+          name: p.patient_name,
+          age: p.age,
+          gender: p.gender,
+          lastVisit: latest?.visit_date || p.updated_at || p.created_at,
+          diagnosis: latest?.diagnosis || 'No diagnosis recorded',
+          consultations: patientConsultations.length,
+        };
+      });
+
+      setPatients(mappedPatients);
+      setFilteredPatients(mappedPatients);
     } catch (error) {
       console.error('Error loading patients:', error);
+      setPatients([]);
+      setFilteredPatients([]);
     } finally {
       setIsLoading(false);
     }

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { User, Building, Bell, Lock, Save } from 'lucide-react';
 import Header from '../components/layout/Header';
 import { useAppContext } from '../context/AppContext';
+import { updateUserProfile, updateUserSettings } from '../services/api';
 import { useToast } from '../components/Toast';
 
 const Settings = () => {
@@ -40,15 +41,21 @@ const Settings = () => {
   const handleSaveProfile = async () => {
     setIsSaving(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Update user context
-      setUser({ ...user, ...profileData });
+      if (!user?.id) {
+        throw new Error('User not available');
+      }
+
+      const response = await updateUserProfile(user.id, {
+        name: profileData.name,
+        email: profileData.email,
+        specialization: profileData.specialization,
+      });
+
+      setUser({ ...user, ...(response?.user || {}) });
       
       toast.success('Profile updated successfully!');
     } catch (error) {
-      toast.error('Failed to update profile');
+      toast.error(error?.error || error?.message || 'Failed to update profile');
     } finally {
       setIsSaving(false);
     }
@@ -56,11 +63,14 @@ const Settings = () => {
 
   const handleSaveNotifications = async () => {
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
+      if (!user?.id) {
+        throw new Error('User not available');
+      }
+
+      await updateUserSettings(user.id, notifications);
       toast.success('Notification settings updated!');
     } catch (error) {
-      toast.error('Failed to update settings');
+      toast.error(error?.error || error?.message || 'Failed to update settings');
     }
   };
 

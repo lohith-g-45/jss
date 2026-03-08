@@ -4,7 +4,7 @@ import { Bell, Search, Moon, Sun } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
 const Header = ({ title, subtitle }) => {
-  const { darkMode, setDarkMode } = useAppContext();
+  const { darkMode, setDarkMode, user } = useAppContext();
   const [notifications] = useState(3);
 
   return (
@@ -57,6 +57,21 @@ const Header = ({ title, subtitle }) => {
               </span>
             )}
           </motion.button>
+
+          {/* Signed-in User */}
+          <div className="hidden lg:flex items-center space-x-3 bg-gray-100 rounded-lg px-3 py-2">
+            <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-semibold">
+              {user?.name?.charAt(0) || 'D'}
+            </div>
+            <div className="leading-tight">
+              <p className="text-sm font-semibold text-gray-900 truncate max-w-44">
+                {user?.name || 'Doctor'}
+              </p>
+              <p className="text-xs text-gray-500 truncate max-w-44">
+                {user?.email || 'Not signed in'}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </header>

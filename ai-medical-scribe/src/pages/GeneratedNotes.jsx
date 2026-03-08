@@ -4,31 +4,46 @@ import { motion } from 'framer-motion';
 import Header from '../components/layout/Header';
 import SOAPEditor from '../components/SOAPEditor';
 import { useAppContext } from '../context/AppContext';
-import { saveNotes, regenerateNotes } from '../services/api';
-import { mockSOAPNotes } from '../utils/mockData';
+import { regenerateNotes, saveConsultation } from '../services/api';
 import { useToast } from '../components/Toast';
 
 const GeneratedNotes = () => {
   const navigate = useNavigate();
   const toast = useToast();
-  const { generatedNotes, setGeneratedNotes, transcript, clearConsultation } = useAppContext();
+  const { generatedNotes, setGeneratedNotes, transcript, clearConsultation, patientInfo, user } = useAppContext();
   const [isRegenerating, setIsRegenerating] = useState(false);
 
   useEffect(() => {
-    // If no notes available, redirect to consultation page
     if (!generatedNotes) {
-      // For demo, set mock notes
-      setGeneratedNotes(mockSOAPNotes);
+      navigate('/consultation');
     }
-  }, [generatedNotes, setGeneratedNotes]);
+  }, [generatedNotes, navigate]);
 
   const handleSaveNotes = async (notes) => {
     try {
       toast.info('Saving notes...');
-      
-      // Simulate API call
-      // In production, use: await saveNotes({ notes, transcript });
-      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const payload = {
+        patient_id: patientInfo?.id,
+        doctor_id: user?.id,
+        visit_date: patientInfo?.dateOfVisit || new Date().toISOString().slice(0, 10),
+        transcript: transcript || '',
+        subjective: notes?.chiefComplaint || '',
+        objective: notes?.historyOfPresentIllness || '',
+        assessment: notes?.assessment || '',
+        plan: notes?.plan || '',
+        diagnosis: notes?.assessment || 'General consultation',
+        medications: notes?.pastMedicalHistory || '',
+        follow_up: 'As advised by doctor',
+        status: 'completed',
+        duration: 15,
+      };
+
+      if (!payload.patient_id || !payload.doctor_id) {
+        throw new Error('Missing patient or doctor information');
+      }
+
+      await saveConsultation(payload);
       
       toast.success('Notes saved successfully!');
       
@@ -53,16 +68,8 @@ const GeneratedNotes = () => {
     setIsRegenerating(true);
     try {
       toast.info('Regenerating notes with AI...');
-      
-      // Simulate API call
-      // In production, use: const result = await regenerateNotes(transcript);
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // For demo, slightly modify the notes
-      const newNotes = {
-        ...mockSOAPNotes,
-        assessment: mockSOAPNotes.assessment + '\n\nNote: Regenerated with updated AI analysis.',
-      };
+
+      const newNotes = await regenerateNotes(transcript);
       
       setGeneratedNotes(newNotes);
       toast.success('Notes regenerated successfully!');

@@ -5,8 +5,8 @@ import { Users, FileText, Activity, Plus, Calendar } from 'lucide-react';
 import Header from '../components/layout/Header';
 import StatCard from '../components/StatCard';
 import Loading from '../components/Loading';
-import { mockDashboardStats, mockRecentConsultations } from '../utils/mockData';
-import { formatDate, formatTime } from '../utils/helpers';
+import { getDashboardStats, getRecentConsultations } from '../services/api';
+import { formatDate } from '../utils/helpers';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -21,12 +21,17 @@ const Dashboard = () => {
   const loadDashboardData = async () => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setStats(mockDashboardStats);
-      setRecentConsultations(mockRecentConsultations);
+      const [statsData, recentData] = await Promise.all([
+        getDashboardStats(),
+        getRecentConsultations(8),
+      ]);
+
+      setStats(statsData);
+      setRecentConsultations(recentData.consultations || []);
     } catch (error) {
       console.error('Error loading dashboard:', error);
+      setStats({ consultationsToday: 0, totalPatients: 0, notesGenerated: 0, averageTime: '0 min' });
+      setRecentConsultations([]);
     } finally {
       setIsLoading(false);
     }
@@ -101,7 +106,7 @@ const Dashboard = () => {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.1 }}
                     className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                    onClick={() => navigate(`/patients/${consultation.id}`)}
+                    onClick={() => navigate(`/patients/${consultation.patientId}`)}
                   >
                     <div className="flex items-center space-x-4">
                       <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white font-semibold">
@@ -126,6 +131,10 @@ const Dashboard = () => {
                     </div>
                   </motion.div>
                 ))}
+
+                {recentConsultations.length === 0 && (
+                  <p className="text-sm text-gray-500">No recent consultations found.</p>
+                )}
               </div>
             </div>
           </div>

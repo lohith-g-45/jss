@@ -6,7 +6,7 @@ import Header from '../components/layout/Header';
 import SOAPEditor from '../components/SOAPEditor';
 import Modal from '../components/Modal';
 import Loading from '../components/Loading';
-import { mockPatientDetail } from '../utils/mockData';
+import { getPatientById } from '../services/api';
 import { formatDate } from '../utils/helpers';
 
 const PatientDetail = () => {
@@ -24,11 +24,51 @@ const PatientDetail = () => {
   const loadPatientData = async () => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setPatient(mockPatientDetail);
+      const response = await getPatientById(id);
+      const rawPatient = response?.patient;
+      const consultations = response?.consultations || [];
+
+      if (!rawPatient) {
+        setPatient(null);
+        return;
+      }
+
+      const mappedConsultations = consultations.map((c) => ({
+        id: c.id,
+        chiefComplaint: c.diagnosis || c.subjective || 'Consultation',
+        date: c.visit_date,
+        time: c.created_at
+          ? new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : '--:--',
+        doctor: c.doctor_name || 'Doctor',
+        transcript: c.transcript || 'No transcript available',
+        notes: {
+          chiefComplaint: c.subjective || '',
+          historyOfPresentIllness: c.objective || '',
+          pastMedicalHistory: '',
+          assessment: c.assessment || '',
+          plan: c.plan || '',
+        },
+      }));
+
+      setPatient({
+        id: rawPatient.id,
+        name: rawPatient.patient_name,
+        age: rawPatient.age,
+        gender: rawPatient.gender,
+        email: rawPatient.email || 'N/A',
+        phone: rawPatient.phone || 'N/A',
+        address: rawPatient.address || 'N/A',
+        medicalHistory: {
+          allergies: rawPatient.allergies ? rawPatient.allergies.split(',').map((x) => x.trim()).filter(Boolean) : ['None recorded'],
+          medications: rawPatient.medical_history ? [rawPatient.medical_history] : ['None recorded'],
+          conditions: [],
+        },
+        consultations: mappedConsultations,
+      });
     } catch (error) {
       console.error('Error loading patient:', error);
+      setPatient(null);
     } finally {
       setIsLoading(false);
     }
