@@ -1,0 +1,13 @@
+# Local database volume data
+.mariadb-data/
+.mysql-data/
+
+# Local editor settings
+.vscode/
+
+# Local secrets
+ai-medical-scribe/.env
+backend/.env
+
+# Nested repository (managed separately)
+Medical-Scribe/
