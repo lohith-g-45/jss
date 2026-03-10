@@ -13,24 +13,29 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [recentConsultations, setRecentConsultations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => {
     loadDashboardData();
+    // Live refresh every 30 seconds
+    const interval = setInterval(loadDashboardData, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadDashboardData = async () => {
-    setIsLoading(true);
     try {
       const [statsData, recentData] = await Promise.all([
         getDashboardStats(),
         getRecentConsultations(8),
       ]);
-
       setStats(statsData);
       setRecentConsultations(recentData.consultations || []);
+      setLastUpdated(new Date());
     } catch (error) {
       console.error('Error loading dashboard:', error);
-      setStats({ consultationsToday: 0, totalPatients: 0, notesGenerated: 0, averageTime: '0 min' });
+      if (!stats) {
+        setStats({ consultationsToday: 0, todayTrend: 'No data', totalPatients: 0, notesGenerated: 0, averageTime: '0 min', consultationsThisWeek: 0, newPatientsThisWeek: 0, followUpsThisWeek: 0 });
+      }
       setRecentConsultations([]);
     } finally {
       setIsLoading(false);
@@ -49,13 +54,27 @@ const Dashboard = () => {
       />
       
       <div className="p-8">
+        {/* Live indicator */}
+        <div className="flex items-center justify-end mb-4 space-x-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+          <span className="text-xs text-gray-400">
+            {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : 'Loading...'}
+          </span>
+          <button
+            onClick={loadDashboardData}
+            className="text-xs text-blue-600 hover:text-blue-800 font-medium ml-2"
+          >
+            Refresh
+          </button>
+        </div>
+
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <StatCard
             icon={Activity}
             title="Consultations Today"
             value={stats?.consultationsToday || 0}
-            trend="+2 from yesterday"
+            trend="Today's count"
             color="primary"
           />
           <StatCard
@@ -69,7 +88,7 @@ const Dashboard = () => {
             icon={FileText}
             title="AI Notes Generated"
             value={stats?.notesGenerated || 0}
-            trend="Today"
+            trend="Today's consultations"
             color="success"
           />
           <StatCard
@@ -109,8 +128,8 @@ const Dashboard = () => {
                     onClick={() => navigate(`/patients/${consultation.patientId}`)}
                   >
                     <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white font-semibold">
-                        {consultation.patientName.charAt(0)}
+                      <div className="w-12 h-12 rounded-lg flex items-center justify-center font-bold text-xs shrink-0" style={{ backgroundColor: '#EFF6FF', color: '#2563EB', border: '1.5px solid #BFDBFE' }}>
+                        {consultation.patientId}
                       </div>
                       <div>
                         <h3 className="font-semibold text-gray-900">
@@ -168,15 +187,15 @@ const Dashboard = () => {
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600 text-sm">Consultations</span>
-                  <span className="font-semibold text-gray-900">32</span>
+                  <span className="font-semibold text-gray-900">{stats?.consultationsThisWeek ?? '—'}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600 text-sm">New Patients</span>
-                  <span className="font-semibold text-gray-900">8</span>
+                  <span className="font-semibold text-gray-900">{stats?.newPatientsThisWeek ?? '—'}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600 text-sm">Follow-ups</span>
-                  <span className="font-semibold text-gray-900">24</span>
+                  <span className="font-semibold text-gray-900">{stats?.followUpsThisWeek ?? '—'}</span>
                 </div>
               </div>
             </div>

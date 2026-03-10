@@ -7,6 +7,7 @@
 
 # Local secrets
 ai-medical-scribe/.env
+ai-medical-scribe/server/.env
 backend/.env
 
 # Nested repository (managed separately)

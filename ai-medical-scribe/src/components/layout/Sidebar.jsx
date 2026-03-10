@@ -3,10 +3,10 @@ import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
   Mic,
-  FileText,
   Users,
   Settings,
   LogOut,
+  Mail,
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -17,7 +17,6 @@ const Sidebar = () => {
   const menuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/consultation', icon: Mic, label: 'Start Consultation' },
-    { path: '/notes', icon: FileText, label: 'Generated Notes' },
     { path: '/patients', icon: Users, label: 'Patient Records' },
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];
@@ -29,7 +28,7 @@ const Sidebar = () => {
       {/* Logo */}
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#2563EB' }}>
             <Mic className="text-white" size={24} />
           </div>
           <div>
@@ -52,9 +51,10 @@ const Sidebar = () => {
                 whileTap={{ scale: 0.98 }}
                 className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
                   active
-                    ? 'bg-primary text-white shadow-md'
-                    : 'text-gray-700 hover:bg-gray-100'
+                    ? 'text-white shadow-md'
+                    : 'text-gray-700 hover:bg-blue-50 hover:text-blue-600'
                 }`}
+                style={active ? { backgroundColor: '#2563EB' } : {}}
               >
                 <Icon size={20} />
                 <span className="font-medium">{item.label}</span>
@@ -67,16 +67,22 @@ const Sidebar = () => {
       {/* User Info */}
       <div className="p-4 border-t border-gray-200">
         <div className="flex items-center space-x-3 mb-4">
-          <div className="w-10 h-10 bg-accent rounded-full flex items-center justify-center text-white font-semibold">
-            {user?.name?.charAt(0) || 'D'}
+          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shrink-0" style={{ backgroundColor: '#2563EB' }}>
+            {user?.name?.charAt(0)?.toUpperCase() || 'D'}
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-gray-900 truncate">
               {user?.name || 'Doctor'}
             </p>
             <p className="text-xs text-gray-500 truncate">
               {user?.specialization || 'Medical Professional'}
             </p>
+            {user?.email && (
+              <div className="flex items-center space-x-1 mt-0.5">
+                <Mail size={11} className="text-blue-400 shrink-0" />
+                <p className="text-xs text-blue-500 truncate">{user.email}</p>
+              </div>
+            )}
           </div>
         </div>
         

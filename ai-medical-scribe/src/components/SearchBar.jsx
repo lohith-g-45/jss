@@ -13,14 +13,14 @@ const SearchBar = ({ placeholder = 'Search...', onSearch, className = '' }) => {
   };
 
   return (
-    <div className={`relative ${className}`}>
-      <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+    <div className={`flex items-center bg-white border border-gray-300 rounded-lg px-4 py-3 ${className}`}>
+      <Search size={18} className="text-gray-400 mr-3 shrink-0" />
       <input
         type="text"
         value={query}
         onChange={handleSearch}
         placeholder={placeholder}
-        className="input-field pl-12"
+        className="outline-none text-sm w-full text-gray-700 placeholder-gray-400 bg-transparent"
       />
     </div>
   );

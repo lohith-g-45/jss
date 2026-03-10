@@ -1,11 +1,48 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Bell, Search, Moon, Sun } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
+import { searchPatients } from '../../services/api';
 
 const Header = ({ title, subtitle }) => {
-  const { darkMode, setDarkMode, user } = useAppContext();
-  const [notifications] = useState(3);
+  const { user } = useAppContext();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const searchTimeout = useRef(null);
+
+  const handleSearch = (e) => {
+    const value = e.target.value;
+    setQuery(value);
+    clearTimeout(searchTimeout.current);
+    if (!value.trim()) {
+      setResults([]);
+      setShowDropdown(false);
+      return;
+    }
+    searchTimeout.current = setTimeout(async () => {
+      try {
+        const res = await searchPatients(value.trim());
+        setResults(res?.patients || []);
+        setShowDropdown(true);
+      } catch {
+        setResults([]);
+      }
+    }, 300);
+  };
+
+  const handleSelect = (patient) => {
+    setQuery('');
+    setResults([]);
+    setShowDropdown(false);
+    navigate(`/patients/${patient.id}`);
+  };
+
+  const handleBlur = () => {
+    // Small delay so click on result fires first
+    setTimeout(() => setShowDropdown(false), 150);
+  };
 
   return (
     <header className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
@@ -21,46 +58,45 @@ const Header = ({ title, subtitle }) => {
         {/* Action Section */}
         <div className="flex items-center space-x-4">
           {/* Search Bar */}
-          <div className="hidden md:flex items-center bg-gray-100 rounded-lg px-4 py-2 w-64">
-            <Search size={18} className="text-gray-400 mr-2" />
-            <input
-              type="text"
-              placeholder="Search..."
-              className="bg-transparent outline-none text-sm w-full text-gray-700 placeholder-gray-400"
-            />
+          <div className="hidden md:block relative w-72">
+            <div className="flex items-center bg-gray-100 rounded-lg px-4 py-2">
+              <Search size={18} className="text-gray-400 mr-2 shrink-0" />
+              <input
+                type="text"
+                value={query}
+                onChange={handleSearch}
+                onBlur={handleBlur}
+                onFocus={() => results.length > 0 && setShowDropdown(true)}
+                placeholder="Search patients..."
+                className="bg-transparent outline-none text-sm w-full text-gray-700 placeholder-gray-400"
+              />
+            </div>
+            {showDropdown && results.length > 0 && (
+              <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-72 overflow-y-auto">
+                {results.map((p) => (
+                  <button
+                    key={p.id}
+                    onMouseDown={() => handleSelect(p)}
+                    className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b border-gray-100 last:border-0 transition-colors"
+                  >
+                    <p className="text-sm font-semibold text-gray-900">{p.patient_name}</p>
+                    <p className="text-xs text-gray-500">
+                      {p.age && `Age: ${p.age}`}{p.gender && ` · ${p.gender}`}{p.phone && ` · ${p.phone}`}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+            {showDropdown && query.trim() && results.length === 0 && (
+              <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 px-4 py-3">
+                <p className="text-sm text-gray-500">No patients found for "{query}"</p>
+              </div>
+            )}
           </div>
-
-          {/* Dark Mode Toggle */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setDarkMode(!darkMode)}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            {darkMode ? (
-              <Sun size={20} className="text-gray-600" />
-            ) : (
-              <Moon size={20} className="text-gray-600" />
-            )}
-          </motion.button>
-
-          {/* Notifications */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            <Bell size={20} className="text-gray-600" />
-            {notifications > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                {notifications}
-              </span>
-            )}
-          </motion.button>
 
           {/* Signed-in User */}
           <div className="hidden lg:flex items-center space-x-3 bg-gray-100 rounded-lg px-3 py-2">
-            <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-semibold">
+            <div className="w-8 h-8 rounded-full text-white flex items-center justify-center text-sm font-semibold" style={{ backgroundColor: '#2563EB' }}>
               {user?.name?.charAt(0) || 'D'}
             </div>
             <div className="leading-tight">

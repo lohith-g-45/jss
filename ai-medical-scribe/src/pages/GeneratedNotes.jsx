@@ -1,17 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { Save, Download } from 'lucide-react';
 import Header from '../components/layout/Header';
 import SOAPEditor from '../components/SOAPEditor';
+import ConsultationReport from '../components/ConsultationReport';
 import { useAppContext } from '../context/AppContext';
 import { regenerateNotes, saveConsultation } from '../services/api';
 import { useToast } from '../components/Toast';
+import { generateConsultationPDF } from '../utils/pdfGenerator';
 
 const GeneratedNotes = () => {
   const navigate = useNavigate();
   const toast = useToast();
-  const { generatedNotes, setGeneratedNotes, transcript, clearConsultation, patientInfo, user } = useAppContext();
+  const { generatedNotes, setGeneratedNotes, transcript, utterances, clearConsultation, patientInfo, user, recordingTime } = useAppContext();
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (!generatedNotes) {
@@ -20,13 +25,16 @@ const GeneratedNotes = () => {
   }, [generatedNotes, navigate]);
 
   const handleSaveNotes = async (notes) => {
+    setIsSaving(true);
     try {
       toast.info('Saving notes...');
+
+      const consultationTime = notes?._consultationStartTime || patientInfo?.dateOfVisit || new Date().toISOString().slice(0, 10);
 
       const payload = {
         patient_id: patientInfo?.id,
         doctor_id: user?.id,
-        visit_date: patientInfo?.dateOfVisit || new Date().toISOString().slice(0, 10),
+        visit_date: consultationTime.slice(0, 10),
         transcript: transcript || '',
         subjective: notes?.chiefComplaint || '',
         objective: notes?.historyOfPresentIllness || '',
@@ -36,27 +44,39 @@ const GeneratedNotes = () => {
         medications: notes?.pastMedicalHistory || '',
         follow_up: 'As advised by doctor',
         status: 'completed',
-        duration: 15,
+        // Use actual recording duration in minutes; fall back to 1 min minimum
+        duration: recordingTime > 0 ? Math.max(1, Math.round(recordingTime / 60)) : null,
       };
 
       if (!payload.patient_id || !payload.doctor_id) {
-        throw new Error('Missing patient or doctor information');
+        throw new Error('Missing patient or doctor information — please start a new consultation');
       }
 
       await saveConsultation(payload);
-      
+      setSaved(true);
       toast.success('Notes saved successfully!');
       
-      // Optionally navigate to patients page
       setTimeout(() => {
         navigate('/patients');
         clearConsultation();
       }, 1500);
     } catch (error) {
-      toast.error('Failed to save notes');
+      toast.error(error?.message || 'Failed to save notes');
       console.error('Save error:', error);
       throw error;
+    } finally {
+      setIsSaving(false);
     }
+  };
+
+  const handleDownloadPDF = () => {
+    generateConsultationPDF({
+      patientInfo,
+      notes: generatedNotes,
+      transcript,
+      doctorInfo: user ? { name: user.name, specialization: user.specialization } : null,
+      utterances,
+    });
   };
 
   const handleRegenerate = async () => {
@@ -116,12 +136,24 @@ const GeneratedNotes = () => {
             />
           </motion.div>
 
+          {/* Consultation Report — Doctor / Patient voice breakdown */}
+          {utterances && utterances.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+              className="mt-6"
+            >
+              <ConsultationReport utterances={utterances} />
+            </motion.div>
+          )}
+
           {/* Action Buttons */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}
-            className="flex justify-center space-x-4 mt-8"
+            className="flex flex-wrap justify-center gap-3 mt-8"
           >
             <button
               onClick={() => navigate('/consultation')}
@@ -129,6 +161,29 @@ const GeneratedNotes = () => {
             >
               Start New Consultation
             </button>
+
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleDownloadPDF}
+              className="flex items-center space-x-2 px-5 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium transition-colors"
+            >
+              <Download size={18} />
+              <span>Download PDF Report</span>
+            </motion.button>
+
+            {!saved && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleSaveNotes(generatedNotes)}
+                disabled={isSaving}
+                className="flex items-center space-x-2 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save size={18} />
+                <span>{isSaving ? 'Saving...' : 'Save & Complete'}</span>
+              </motion.button>
+            )}
             <button
               onClick={() => navigate('/patients')}
               className="px-6 py-3 text-primary hover:text-blue-700 font-medium"

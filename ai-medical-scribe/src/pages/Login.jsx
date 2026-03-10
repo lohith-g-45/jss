@@ -55,7 +55,25 @@ const Login = () => {
       toast.success('Login successful!');
       navigate('/dashboard');
     } catch (error) {
-      toast.error(error.error || error.message || 'Login failed. Please try again.');
+      const isApiUnavailable = !error?.error && !error?.message;
+      const isDemoCredential =
+        formData.email.trim().toLowerCase() === 'sarah.johnson@hospital.com' &&
+        formData.password === 'password123';
+
+      if (isApiUnavailable && isDemoCredential) {
+        login({
+          id: 'local-demo',
+          name: 'Dr. Sarah Johnson',
+          email: 'sarah.johnson@hospital.com',
+          role: 'doctor',
+          localOnly: true,
+        });
+        toast.warning('Backend API is offline. Logged in using local demo mode.');
+        navigate('/dashboard');
+        return;
+      }
+
+      toast.error(error?.error || error?.message || 'Login failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -185,17 +203,25 @@ const Login = () => {
             </motion.button>
           </form>
 
-          {/* DB Login Hint */}
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <p className="text-xs text-blue-800 font-medium mb-2">
-              Sign in with credentials stored in your database:
-            </p>
-            <p className="text-xs text-blue-700">
-              Example Email: sarah.johnson@hospital.com
-            </p>
-            <p className="text-xs text-blue-700">
-              Example Password: password123
-            </p>
+          {/* Login Credentials Hint */}
+          <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-2">
+            <p className="text-xs text-blue-800 font-semibold mb-1">Quick Login Credentials:</p>
+            <button
+              type="button"
+              onClick={() => setFormData({ email: 'sarah.johnson@hospital.com', password: 'password123' })}
+              className="w-full text-left px-3 py-2 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition"
+            >
+              <p className="text-xs font-medium text-gray-800">Dr. Sarah Johnson</p>
+              <p className="text-xs text-gray-500">sarah.johnson@hospital.com · password123</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormData({ email: 'lolai@gmail.com', password: 'lolai123' })}
+              className="w-full text-left px-3 py-2 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition"
+            >
+              <p className="text-xs font-medium text-gray-800">lolai</p>
+              <p className="text-xs text-gray-500">lolai@gmail.com · lolai123</p>
+            </button>
           </div>
 
           <div className="mt-4 text-center">

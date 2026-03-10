@@ -43,12 +43,18 @@ const authRoutes = require('./routes/auth');
 const patientRoutes = require('./routes/patients');
 const consultationRoutes = require('./routes/consultations');
 const userRoutes = require('./routes/users');
+const notesRoutes = require('./routes/notes');
+const transcribeRoutes = require('./routes/transcribe');
+const diarizeRoutes = require('./routes/diarize');
 
 // Use routes
 app.use('/api/auth', authRoutes);
 app.use('/api/patients', patientRoutes);
 app.use('/api/consultations', consultationRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/notes', notesRoutes);
+app.use('/api/transcribe', transcribeRoutes);
+app.use('/api/diarize', diarizeRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

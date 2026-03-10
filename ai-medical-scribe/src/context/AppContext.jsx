@@ -13,6 +13,7 @@ export const useAppContext = () => {
 export const AppProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [transcript, setTranscript] = useState('');
+  const [utterances, setUtterances] = useState([]); // structured diarization: [{speaker, text, start, end}]
   const [generatedNotes, setGeneratedNotes] = useState(null);
   const [consultationData, setConsultationData] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
@@ -68,6 +69,7 @@ export const AppProvider = ({ children }) => {
 
   const clearConsultation = () => {
     setTranscript('');
+    setUtterances([]);
     setGeneratedNotes(null);
     setConsultationData(null);
     setIsRecording(false);
@@ -82,6 +84,8 @@ export const AppProvider = ({ children }) => {
     logout,
     transcript,
     setTranscript,
+    utterances,
+    setUtterances,
     generatedNotes,
     setGeneratedNotes,
     consultationData,

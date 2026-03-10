@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sparkles, User, Calendar, ArrowRight, UserCircle, Stethoscope } from 'lucide-react';
+import { Sparkles, User, ArrowRight, UserCircle, Stethoscope } from 'lucide-react';
 import Header from '../components/layout/Header';
 import TranscriptBox from '../components/TranscriptBox';
+import ConsultationReport from '../components/ConsultationReport';
 import { useAppContext } from '../context/AppContext';
-import { createPatient, generateNotes, uploadAudio } from '../services/api';
+import { createPatient, generateNotes, uploadAudio, saveConsultation, searchPatients, transcribeAudio, diarizeAudio } from '../services/api';
 import { useToast } from '../components/Toast';
 import Loading from '../components/Loading';
 
@@ -15,6 +16,8 @@ const StartConsultation = () => {
   const {
     transcript,
     setTranscript,
+    utterances,
+    setUtterances,
     isRecording,
     setIsRecording,
     setGeneratedNotes,
@@ -23,6 +26,7 @@ const StartConsultation = () => {
     audioBlob,
     setAudioBlob,
     user,
+    setRecordingTime,
   } = useAppContext();
 
   // Step management
@@ -33,21 +37,39 @@ const StartConsultation = () => {
     patientName: '',
     age: '',
     gender: '',
+    phone: '',
+    email: '',
+    address: '',
     dateOfVisit: new Date().toISOString().split('T')[0],
   });
+
+  // Track when recording actually started
+  const consultationStartTimeRef = useRef(null);
   const [formErrors, setFormErrors] = useState({});
+
+  // Returning patient detection
+  const [returningPatient, setReturningPatient] = useState(null); // existing patient from DB
+  const [showReturningBanner, setShowReturningBanner] = useState(false);
 
   // Recording/transcription state
   const [hasRecorded, setHasRecorded] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isDiarizing, setIsDiarizing] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  // Language the doctor selects before recording: 'en' = English, 'kn' = Kannada
+  const [consultationLang, setConsultationLang] = useState('en');
+  const consultationLangRef = useRef('en'); // accessible inside async callbacks
   
   // Speaker tracking from backend live pipeline
   const [currentSpeaker, setCurrentSpeaker] = useState('Doctor'); // 'Doctor' or 'Patient'
   const lastSpeakerRef = useRef('Doctor');
+  const liveTranscriptRef = useRef(''); // mirrors transcript state — readable inside onstop closure
+  const speakerPauseTimerRef = useRef(null); // pause-based auto speaker switch
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const mediaStreamRef = useRef(null);
+  const audioCtxRef = useRef(null);   // noise-filter AudioContext
   const wsRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -57,17 +79,49 @@ const StartConsultation = () => {
     return `${wsBase}/ws/consult-${Date.now()}`;
   };
 
+  const connectWebSocket = (url, timeoutMs = 7000) => new Promise((resolve, reject) => {
+    const ws = new WebSocket(url);
+    const timeout = setTimeout(() => {
+      ws.close();
+      reject(new Error('Live transcription service is not reachable'));
+    }, timeoutMs);
+
+    ws.onopen = () => {
+      clearTimeout(timeout);
+      resolve(ws);
+    };
+
+    ws.onerror = () => {
+      clearTimeout(timeout);
+      reject(new Error('WebSocket connection failed'));
+    };
+  });
+
+  // Toggle speaker after a pause (or on manual tap)
+  const PAUSE_SWITCH_MS = 1800; // 1.8 s silence → switch speaker
+
+  const toggleSpeaker = () => {
+    const next = lastSpeakerRef.current === 'Doctor' ? 'Patient' : 'Doctor';
+    lastSpeakerRef.current = next;
+    setCurrentSpeaker(next);
+  };
+
   const appendTranscriptLine = (speaker, text) => {
     if (!text?.trim()) {
       return;
     }
 
+    const normalized = text.trim();
+    const line = `${speaker}: ${normalized}`;
+    liveTranscriptRef.current = liveTranscriptRef.current?.trim()
+      ? `${liveTranscriptRef.current}\n\n${line}`
+      : line;
+
     setTranscript((prev) => {
-      const normalized = text.trim();
       if (!prev?.trim()) {
-        return `${speaker}: ${normalized}`;
+        return line;
       }
-      return `${prev}\n\n${speaker}: ${normalized}`;
+      return `${prev}\n\n${line}`;
     });
   };
 
@@ -98,17 +152,43 @@ const StartConsultation = () => {
     return () => {
       stopTimer();
       closeWebSocket();
+      stopBrowserTranscription();
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
   }, []);
 
-  // Handle form input changes
+  // Handle form input changes — check returning patient when name/phone/email changes
   const handleFormChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     setFormErrors((prev) => ({ ...prev, [name]: '' }));
+    // Hide returning banner if user edits the form
+    setShowReturningBanner(false);
+    setReturningPatient(null);
+  };
+
+  // Check if this is a returning patient after name is filled
+  const checkReturningPatient = async () => {
+    const name = formData.patientName.trim();
+    const phone = formData.phone.trim();
+    const email = formData.email.trim();
+    if (!name || (!phone && !email)) return;
+
+    try {
+      const res = await searchPatients(name);
+      const matches = (res?.patients || []).filter((p) => {
+        const nameMatch = p.patient_name?.toLowerCase() === name.toLowerCase();
+        const phoneMatch = phone && p.phone && p.phone.replace(/\D/g, '') === phone.replace(/\D/g, '');
+        const emailMatch = email && p.email && p.email.toLowerCase() === email.toLowerCase();
+        return nameMatch && (phoneMatch || emailMatch);
+      });
+      if (matches.length > 0) {
+        setReturningPatient(matches[0]);
+        setShowReturningBanner(true);
+      }
+    } catch (_) {}
   };
 
   // Validate patient form
@@ -118,6 +198,25 @@ const StartConsultation = () => {
     if (!formData.age || formData.age < 0 || formData.age > 150) errors.age = 'Valid age is required';
     if (!formData.gender) errors.gender = 'Gender is required';
     return errors;
+  };
+
+  // Continue with returning patient (use existing record)
+  const handleContinueReturning = () => {
+    const p = returningPatient;
+    setPatientInfo({
+      ...formData,
+      id: p.id,
+      patientName: p.patient_name,
+      age: formData.age || p.age,
+      gender: formData.gender || p.gender,
+      phone: p.phone || formData.phone,
+      email: p.email || formData.email,
+      address: p.address || formData.address,
+      doctorId: user?.id,
+      isReturning: true,
+    });
+    setCurrentStep(2);
+    toast.success(`Welcome back, ${p.patient_name}! Continuing from previous records.`);
   };
 
   // Submit patient form
@@ -131,11 +230,20 @@ const StartConsultation = () => {
       return;
     }
 
+    // If user confirmed an existing patient, use that record
+    if (showReturningBanner && returningPatient) {
+      handleContinueReturning();
+      return;
+    }
+
     try {
       const patientPayload = {
         patient_name: formData.patientName,
         age: Number(formData.age),
         gender: formData.gender,
+        phone: formData.phone || null,
+        email: formData.email || null,
+        address: formData.address || null,
         medical_history: '',
       };
 
@@ -144,23 +252,102 @@ const StartConsultation = () => {
       setCurrentStep(2);
       toast.success('Patient information saved. Ready to start consultation.');
     } catch (error) {
-      toast.error(error?.error || 'Failed to save patient information');
+      const fallbackId = `local-${Date.now()}`;
+      setPatientInfo({ ...formData, id: fallbackId, doctorId: user?.id, localOnly: true });
+      setCurrentStep(2);
+      toast.warning('Database unavailable. Continuing in local mode.');
+    }
+  };
+
+  // Live transcript: language-aware recognition.
+  // English mode  → en-IN, shows live English/Kanglish.
+  // Kannada mode  → kn-IN, shows live Kannada script; Whisper translates after stop.
+  const speechRecognitionRef = useRef(null);
+  const speechRecognitionKnRef = useRef(null); // unused, kept for cleanup safety
+
+  const makeSpeechRecognition = (lang) => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return null;
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = lang;
+
+    recognition.onresult = (event) => {
+      // Cancel any pending speaker-switch — speech is still happening
+      if (speakerPauseTimerRef.current) {
+        clearTimeout(speakerPauseTimerRef.current);
+        speakerPauseTimerRef.current = null;
+      }
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          const text = result[0].transcript.trim();
+          // Use the current speaker from the ref (updates when toggled)
+          if (text) appendTranscriptLine(lastSpeakerRef.current, text);
+
+          // After this utterance ends, start a silence timer.
+          // If nobody speaks for PAUSE_SWITCH_MS, auto-switch speaker.
+          speakerPauseTimerRef.current = setTimeout(() => {
+            speakerPauseTimerRef.current = null;
+            toggleSpeaker();
+          }, PAUSE_SWITCH_MS);
+        }
+      }
+    };
+
+    recognition.onerror = () => {};
+    recognition.onend = () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        try { recognition.start(); } catch (_) {}
+      }
+    };
+
+    try { recognition.start(); } catch (_) {}
+    return recognition;
+  };
+
+  const startBrowserTranscription = () => {
+    const lang = consultationLangRef.current === 'kn' ? 'kn-IN' : 'en-IN';
+    speechRecognitionRef.current = makeSpeechRecognition(lang);
+  };
+
+  const stopBrowserTranscription = () => {
+    if (speakerPauseTimerRef.current) {
+      clearTimeout(speakerPauseTimerRef.current);
+      speakerPauseTimerRef.current = null;
+    }
+    if (speechRecognitionRef.current) {
+      try { speechRecognitionRef.current.stop(); } catch (_) {}
+      speechRecognitionRef.current = null;
+    }
+    if (speechRecognitionKnRef.current) {
+      try { speechRecognitionKnRef.current.stop(); } catch (_) {}
+      speechRecognitionKnRef.current = null;
     }
   };
 
   // Start recording and speech recognition
   const handleStartRecording = async () => {
     setTranscript('');
+    setUtterances([]);
     setAudioBlob(null);
-    setIsRecording(true);
     setHasRecorded(false);
     setRecordingSeconds(0);
     setCurrentSpeaker('Doctor');
     lastSpeakerRef.current = 'Doctor';
+    liveTranscriptRef.current = '';
+    consultationLangRef.current = consultationLang; // snapshot selected lang for callbacks
+    consultationStartTimeRef.current = new Date().toISOString();
 
+    // Try WebSocket (AI backend), fall back to browser speech recognition
+    let wsConnected = false;
     try {
-      const ws = new WebSocket(getWsUrl());
+      const ws = await connectWebSocket(getWsUrl());
       wsRef.current = ws;
+      wsConnected = true;
 
       ws.onmessage = (event) => {
         try {
@@ -183,15 +370,42 @@ const StartConsultation = () => {
       };
 
       ws.onerror = () => {
-        toast.error('Live transcription socket error. Please restart recording.');
+        toast.error('Live transcription connection dropped. Stop and restart recording.');
       };
 
-      mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      ws.onclose = () => {
+        if (isRecording) {
+          toast.warning('Live transcription disconnected. Please start recording again.');
+        }
+      };
+    } catch (wsError) {
+      console.warn('AI backend unavailable, falling back to browser transcription:', wsError.message);
+    }
+
+    // Start microphone recording regardless of WebSocket status
+    try {
+      // Disable OS-level noise suppression/echo cancellation so the patient's
+      // far-field voice is not filtered out before AssemblyAI hears it.
+      mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 1,
+          sampleRate: { ideal: 16000 },
+        },
+      });
+
+      // The raw stream goes directly to MediaRecorder so both voices are preserved
+      // in the audio blob sent for diarization. No DSP chain — compression/filters
+      // destroy the quieter (patient) voice before AssemblyAI can separate speakers.
+      const recordingStream = mediaStreamRef.current;
+
       const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
       const supportedType = mimeTypes.find((m) => MediaRecorder.isTypeSupported(m));
       mediaRecorderRef.current = supportedType
-        ? new MediaRecorder(mediaStreamRef.current, { mimeType: supportedType })
-        : new MediaRecorder(mediaStreamRef.current);
+        ? new MediaRecorder(recordingStream, { mimeType: supportedType })
+        : new MediaRecorder(recordingStream);
       audioChunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = async (event) => {
@@ -205,17 +419,86 @@ const StartConsultation = () => {
         }
       };
 
-      mediaRecorderRef.current.onstop = () => {
+      mediaRecorderRef.current.onstop = async () => {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         setAudioBlob(blob);
         setHasRecorded(true);
+        // Save actual recording duration (seconds) for use in GeneratedNotes
+        setRecordingTime(recordingSeconds);
+        stopBrowserTranscription();
         if (mediaStreamRef.current) {
           mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        }
+
+        // Try AssemblyAI speaker diarization first (works for both English and Kannada)
+        setIsDiarizing(true);
+        try {
+          const result = await diarizeAudio(blob, consultationLangRef.current);
+          const hasTwoSpeakers = (result?.speakerCount ?? 0) >= 2;
+
+          if (hasTwoSpeakers && result?.fullText?.trim()) {
+            // AssemblyAI successfully found Doctor + Patient — use it
+            setTranscript(result.fullText.trim());
+            setUtterances(result.utterances || []);
+            toast.success('Speaker diarization complete — Doctor and Patient voices identified.');
+            return;
+          }
+
+          if (result?.fullText?.trim() && !hasTwoSpeakers) {
+            // AssemblyAI only detected 1 speaker — keep the live preview, don't overwrite
+            toast.warning('AssemblyAI only detected 1 voice. Keeping your live preview transcript.');
+            // Still save utterances for context but do NOT overwrite transcript
+            setUtterances(result.utterances || []);
+            return;
+          }
+
+          // AssemblyAI returned empty — keep live transcript if we have one
+          if (liveTranscriptRef.current?.trim()) {
+            toast.info('Using your live transcript — AssemblyAI returned no result.');
+            return;
+          }
+          toast.warning('Diarization returned empty result. Falling back to transcription.');
+        } catch (diarizeErr) {
+          console.warn('Diarization failed:', diarizeErr);
+          // Keep the live speaker-labeled transcript if it exists — don't overwrite with Groq
+          if (liveTranscriptRef.current?.trim()) {
+            toast.info('AssemblyAI unavailable — your live Doctor/Patient transcript has been kept.');
+            return;
+          }
+          toast.warning('Speaker diarization unavailable. Falling back to transcription.');
+        } finally {
+          setIsDiarizing(false);
+        }
+
+        // Groq Whisper fallback — only runs if there is NO live transcript at all
+        if (liveTranscriptRef.current?.trim()) {
+          return;
+        }
+        setIsTranscribing(true);
+        try {
+          const result = await transcribeAudio(blob);
+          if (result?.transcript?.trim()) {
+            setTranscript(result.transcript.trim());
+            toast.success('Transcript ready. Review and generate notes.');
+          } else {
+            toast.warning('AI transcription returned empty. Using browser preview if available.');
+          }
+        } catch (err) {
+          console.warn('Whisper transcription failed, keeping live preview:', err);
+          toast.warning('AI transcription unavailable. Using browser live preview.');
+        } finally {
+          setIsTranscribing(false);
         }
       };
 
       mediaRecorderRef.current.start(1200);
+      setIsRecording(true);
       startTimer();
+
+      if (!wsConnected) {
+        toast.warning('AI backend unavailable. Using browser speech recognition for transcription.');
+        startBrowserTranscription();
+      }
     } catch (error) {
       console.error('Error starting media recorder:', error);
       const isPermissionError =
@@ -225,8 +508,8 @@ const StartConsultation = () => {
 
       toast.error(
         isPermissionError
-          ? 'Microphone access failed. Enable Chrome microphone permission and ensure no other app is using it.'
-          : 'Failed to start live recording. Please try again.'
+          ? 'Microphone access denied. Please allow microphone permission in your browser and try again.'
+          : 'Failed to access microphone. Please check your microphone is connected and try again.'
       );
       setIsRecording(false);
       stopTimer();
@@ -239,13 +522,14 @@ const StartConsultation = () => {
     console.log('Stopping recording...');
     setIsRecording(false);
     stopTimer();
+    stopBrowserTranscription();
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
 
     closeWebSocket();
-    toast.info('Recording stopped.');
+    toast.info('Recording stopped. Transcribing with AI...');
   };
 
   const handleGenerateNotes = async () => {
@@ -271,14 +555,40 @@ const StartConsultation = () => {
       const mappedNotes = {
         chiefComplaint: soap.chief_complaint || '',
         historyOfPresentIllness: soap.history || '',
-        pastMedicalHistory: '',
+        pastMedicalHistory: soap.past_medical_history || '',
         assessment: soap.assessment || '',
         plan: soap.plan || '',
       };
 
-      setGeneratedNotes(mappedNotes);
-      toast.success('Medical notes generated successfully!');
-      
+      // If patient was in local-only mode, save them to DB now before navigating
+      if (String(patientInfo?.id).startsWith('local-')) {
+        try {
+          const created = await createPatient({
+            patient_name: patientInfo.patientName,
+            age: Number(patientInfo.age),
+            gender: patientInfo.gender,
+            phone: patientInfo.phone || null,
+            email: patientInfo.email || null,
+            address: patientInfo.address || null,
+            medical_history: '',
+          });
+          setPatientInfo((prev) => ({ ...prev, id: created.patient_id, localOnly: false }));
+        } catch (e) {
+          console.warn('Could not promote local patient to DB:', e);
+        }
+      }
+
+      setGeneratedNotes({
+        ...mappedNotes,
+        _consultationStartTime: consultationStartTimeRef.current || new Date().toISOString(),
+      });
+
+      if (result?.source === 'local') {
+        toast.success('Medical notes generated (AI offline). Review and click Save & Complete.');
+      } else {
+        toast.success('Medical notes generated! Review and click Save & Complete.');
+      }
+
       // Navigate to notes page
       setTimeout(() => {
         navigate('/notes');
@@ -305,26 +615,7 @@ const StartConsultation = () => {
       
       <div className="p-8">
         <div className="max-w-7xl mx-auto">
-          {/* Step Indicator */}
-          <div className="flex items-center justify-center mb-8">
-            <div className="flex items-center space-x-4">
-              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                currentStep === 1 ? 'bg-primary text-white' : 'bg-green-500 text-white'
-              }`}>
-                1
-              </div>
-              <div className="w-24 h-1 bg-gray-300">
-                <div className={`h-full bg-primary transition-all duration-500 ${
-                  currentStep === 2 ? 'w-full' : 'w-0'
-                }`} />
-              </div>
-              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                currentStep === 2 ? 'bg-primary text-white' : 'bg-gray-300 text-gray-600'
-              }`}>
-                2
-              </div>
-            </div>
-          </div>
+
 
           {/* Step 1: Patient Information Form */}
           {currentStep === 1 && (
@@ -400,21 +691,90 @@ const StartConsultation = () => {
                     </div>
                   </div>
 
+                  {/* Phone and Email */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleFormChange}
+                        className="input-field"
+                        placeholder="e.g. +91 9876543210"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleFormChange}
+                        className="input-field"
+                        placeholder="patient@email.com"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Address */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Address / Location
+                    </label>
+                    <input
+                      type="text"
+                      name="address"
+                      value={formData.address}
+                      onChange={handleFormChange}
+                      className="input-field"
+                      placeholder="City, State or full address"
+                    />
+                  </div>
+
+                  {/* Returning Patient Banner */}
+                  {showReturningBanner && returningPatient && (
+                    <div className="bg-blue-50 border border-blue-300 rounded-lg p-4">
+                      <p className="text-sm font-semibold text-blue-800 mb-1">🔄 Returning Patient Found!</p>
+                      <p className="text-sm text-blue-700 mb-3">
+                        <strong>{returningPatient.patient_name}</strong> (Age: {returningPatient.age}, {returningPatient.gender}) is already in your records.
+                        Continue as a returning patient to add this consultation to their history.
+                      </p>
+                      <div className="flex space-x-3">
+                        <button
+                          type="button"
+                          onClick={handleContinueReturning}
+                          className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+                        >
+                          ✓ Continue as Returning Patient
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setShowReturningBanner(false); setReturningPatient(null); }}
+                          className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300"
+                        >
+                          Register as New Patient
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Date of Visit */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Date of Visit
                     </label>
-                    <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                      <input
-                        type="date"
-                        name="dateOfVisit"
-                        value={formData.dateOfVisit}
-                        onChange={handleFormChange}
-                        className="input-field pl-12"
-                      />
-                    </div>
+                    <input
+                      type="date"
+                      name="dateOfVisit"
+                      value={formData.dateOfVisit}
+                      onChange={handleFormChange}
+                      className="input-field"
+                    />
                   </div>
 
                   {/* Submit Button */}
@@ -422,6 +782,7 @@ const StartConsultation = () => {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     type="submit"
+                    onMouseLeave={checkReturningPatient}
                     className="w-full btn-primary flex items-center justify-center space-x-2"
                   >
                     <span>Continue to Consultation</span>
@@ -498,17 +859,55 @@ const StartConsultation = () => {
                     </div>
                   )}
 
+                  {/* Language Toggle — only show before recording starts */}
+                  {!isRecording && !hasRecorded && (
+                    <div className="flex items-center justify-center mb-5">
+                      <div className="inline-flex items-center bg-gray-100 rounded-full p-1 space-x-1">
+                        <button
+                          onClick={() => setConsultationLang('en')}
+                          className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
+                            consultationLang === 'en'
+                              ? 'bg-white text-blue-600 shadow'
+                              : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          🇬🇧 English
+                        </button>
+                        <button
+                          onClick={() => setConsultationLang('kn')}
+                          className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
+                            consultationLang === 'kn'
+                              ? 'bg-white text-orange-600 shadow'
+                              : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          🇮🇳 ಕನ್ನಡ (Kannada)
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Active language indicator while recording */}
+                  {isRecording && (
+                    <div className="flex justify-center mb-4">
+                      <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                        consultationLang === 'kn'
+                          ? 'bg-orange-100 text-orange-700'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {consultationLang === 'kn' ? '🇮🇳 ಕನ್ನಡ mode — Whisper will translate after stop' : '🇬🇧 English mode'}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Main Record Button */}
                   <div className="flex justify-center mb-6">
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={isRecording ? handleStopRecording : handleStartRecording}
-                      className={`w-24 h-24 rounded-full flex items-center justify-center shadow-lg transition-colors ${
-                        isRecording
-                          ? 'bg-red-500 hover:bg-red-600'
-                          : 'bg-primary hover:bg-blue-700'
-                      }`}
+                      className="w-24 h-24 rounded-full flex items-center justify-center shadow-lg transition-colors"
+                      style={{ backgroundColor: isRecording ? '#ef4444' : '#2563EB' }}
                     >
                       {isRecording ? (
                         <motion.div
@@ -571,8 +970,47 @@ const StartConsultation = () => {
                 <TranscriptBox 
                   transcript={transcript}
                   isRecording={isRecording}
+                  isTranscribing={isTranscribing || isDiarizing}
+                  lang={consultationLang}
+                  currentSpeaker={currentSpeaker}
+                  onToggleSpeaker={isRecording ? toggleSpeaker : undefined}
                 />
+
+                {/* Diarizing overlay */}
+                {isDiarizing && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex items-center space-x-3 bg-purple-50 border border-purple-200 rounded-lg px-4 py-3 text-purple-700 text-sm"
+                  >
+                    <Loading size="sm" />
+                    <span>AssemblyAI is identifying Doctor and Patient voices… please wait.</span>
+                  </motion.div>
+                )}
+
+                {/* Transcribing overlay */}
+                {isTranscribing && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex items-center space-x-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-blue-700 text-sm"
+                  >
+                    <Loading size="sm" />
+                    <span>Groq Whisper AI is translating your Kannada / Kanglish / English speech to English… please wait.</span>
+                  </motion.div>
+                )}
               </div>
+
+              {/* Consultation Report — shown after AssemblyAI diarization */}
+              {hasRecorded && utterances.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-6"
+                >
+                  <ConsultationReport utterances={utterances} />
+                </motion.div>
+              )}
 
               {/* Generate Notes Button */}
               {hasRecorded && (transcript || audioBlob) && (
@@ -585,7 +1023,7 @@ const StartConsultation = () => {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={handleGenerateNotes}
-                    disabled={isGenerating || isRecording}
+                    disabled={isGenerating || isRecording || isTranscribing || isDiarizing}
                     className="btn-primary inline-flex items-center space-x-3 text-lg px-8 py-4 disabled:opacity-50"
                   >
                     {isGenerating ? (
@@ -630,14 +1068,18 @@ const StartConsultation = () => {
                     </li>
                     <li className="flex items-start">
                       <span className="font-semibold text-primary mr-2">2.</span>
-                      <span>Speak naturally; audio is streamed live to Whisper in the backend.</span>
+                      <span>Speak in <strong>English</strong>, <strong>Kannada (ಕನ್ನಡ)</strong>, or <strong>Kanglish</strong> — all are supported.</span>
                     </li>
                     <li className="flex items-start">
                       <span className="font-semibold text-primary mr-2">3.</span>
-                      <span>Transcript updates in real-time with Doctor/Patient labels from AI speaker classification.</span>
+                      <span>The <em>Live Transcript</em> is an approximate preview. Kannada words may appear as transliteration — that is normal.</span>
                     </li>
                     <li className="flex items-start">
                       <span className="font-semibold text-primary mr-2">4.</span>
+                      <span>After you <strong>stop recording</strong>, Groq Whisper AI will produce an accurate <strong>English transcript</strong> automatically replacing the preview.</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="font-semibold text-primary mr-2">5.</span>
                       <span>Click the stop button when finished</span>
                     </li>
                     <li className="flex items-start">

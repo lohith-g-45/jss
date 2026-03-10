@@ -3,6 +3,7 @@ import { Eye, Calendar } from 'lucide-react';
 import { formatDate } from '../utils/helpers';
 
 const PatientTable = ({ patients, onViewPatient }) => {
+
   if (!patients || patients.length === 0) {
     return (
       <div className="card text-center py-12">
@@ -33,7 +34,7 @@ const PatientTable = ({ patients, onViewPatient }) => {
                 Visits
               </th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                Actions
+                Action
               </th>
             </tr>
           </thead>
@@ -48,23 +49,18 @@ const PatientTable = ({ patients, onViewPatient }) => {
               >
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center">
-                    <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-semibold mr-3">
-                      {patient.name?.charAt(0) || 'P'}
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-xs mr-3 shrink-0" style={{ backgroundColor: '#EFF6FF', color: '#2563EB', border: '1.5px solid #BFDBFE' }}>
+                      {patient.id}
                     </div>
                     <div>
                       <div className="text-sm font-semibold text-gray-900">
                         {patient.name}
                       </div>
-                      <div className="text-xs text-gray-500">
-                        ID: {patient.id}
-                      </div>
                     </div>
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">
-                    {patient.age} years
-                  </div>
+                  <div className="text-sm text-gray-900">{patient.age} years</div>
                   <div className="text-xs text-gray-500">{patient.gender}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -83,14 +79,14 @@ const PatientTable = ({ patients, onViewPatient }) => {
                     {patient.consultations || 0}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                <td className="px-6 py-4 whitespace-nowrap">
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => onViewPatient(patient.id)}
-                    className="flex items-center space-x-1 text-primary hover:text-blue-700 font-medium"
+                    className="flex items-center space-x-1 text-blue-600 hover:text-blue-800 font-medium text-sm"
                   >
-                    <Eye size={16} />
+                    <Eye size={15} />
                     <span>View</span>
                   </motion.button>
                 </td>

@@ -197,16 +197,127 @@ export const uploadAudio = async (audioBlob, patientInfo = {}) => {
   }
 };
 
+/**
+ * Send audio blob to the Node.js backend, which calls Groq Whisper.
+ * Whisper understands Kannada, English, Kanglish and always returns English.
+ */
+export const transcribeAudio = (audioBlob) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      try {
+        // FileReader result is  "data:<mime>;base64,<data>"
+        const base64 = reader.result.split(',')[1];
+        const response = await api.post('/transcribe', {
+          audioBase64: base64,
+          mimeType: audioBlob.type || 'audio/webm',
+        });
+        resolve(response.data);
+      } catch (error) {
+        reject(error.response?.data || { error: 'Failed to transcribe audio' });
+      }
+    };
+    reader.onerror = () => reject({ error: 'Failed to read audio file' });
+    reader.readAsDataURL(audioBlob);
+  });
+};
+
+export const diarizeAudio = (audioBlob, lang = 'en') => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      try {
+        const base64 = reader.result.split(',')[1];
+        const response = await api.post('/diarize', {
+          audioBase64: base64,
+          mimeType: audioBlob.type || 'audio/webm',
+          lang,
+        });
+        resolve(response.data);
+      } catch (error) {
+        reject(error.response?.data || { error: 'Diarization failed' });
+      }
+    };
+    reader.onerror = () => reject({ error: 'Failed to read audio file' });
+    reader.readAsDataURL(audioBlob);
+  });
+};
+
+// Local SOAP note generator used as fallback when AI backend is unavailable
+const generateNotesLocally = (transcriptText, patientInfo = {}) => {
+  const lines = transcriptText
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const allText = lines.map((l) => l.replace(/^(Doctor|Patient):\s*/i, '')).join(' ');
+
+  // Extract chief complaint — first patient line or first mention of symptom
+  const patientLines = lines
+    .filter((l) => /^patient:/i.test(l))
+    .map((l) => l.replace(/^patient:\s*/i, ''));
+
+  const symptomKeywords = /pain|ache|tired|fatigue|fever|cough|swelling|nausea|dizzy|headache|sore|weak|short.*breath|bleeding|rash|vomit|diarrhea|constipat/i;
+  const chiefComplaintLine =
+    patientLines.find((l) => symptomKeywords.test(l)) ||
+    patientLines[0] ||
+    allText.slice(0, 120);
+
+  // History — all patient lines joined
+  const history = patientLines.length > 1
+    ? patientLines.slice(1).join('. ')
+    : 'Patient presented with the above complaint.';
+
+  // Assessment — extract doctor observations
+  const doctorLines = lines
+    .filter((l) => /^doctor:/i.test(l))
+    .map((l) => l.replace(/^doctor:\s*/i, ''));
+
+  const assessmentLine =
+    doctorLines.find((l) => /observ|diagnos|found|noted|appear|examin/i.test(l)) ||
+    doctorLines[0] ||
+    'Clinical assessment pending.';
+
+  // Plan — medication/treatment mentions
+  const planLine =
+    doctorLines.find((l) => /prescrib|ointment|tablet|medicine|medication|referr|follow|recomm|test|blood|scan|x.ray/i.test(l)) ||
+    doctorLines.slice(-1)[0] ||
+    'Treatment plan to be determined.';
+
+  return {
+    transcript: transcriptText,
+    soap_notes: {
+      chief_complaint: chiefComplaintLine,
+      history: history,
+      assessment: assessmentLine,
+      plan: planLine,
+    },
+    source: 'local',
+  };
+};
+
 export const generateNotes = async (transcriptText, patientInfo = {}) => {
+  // First try the Node.js backend (Groq LLM-powered)
   try {
-    const response = await aiApi.post('/process-text', {
-      text: transcriptText,
-      speaker: 'Unknown',
-      language: 'en',
+    const response = await api.post('/notes/generate', {
+      transcript: transcriptText,
+      patientInfo,
     });
     return response.data;
-  } catch (error) {
-    throw error.response?.data || { error: 'Failed to generate AI notes' };
+  } catch (nodeError) {
+    // Fallback to Python AI backend
+    try {
+      const response = await aiApi.post('/process-text', {
+        text: transcriptText,
+        speaker: 'Unknown',
+        language: 'en',
+      });
+      return response.data;
+    } catch (aiError) {
+      // Final fallback: generate locally from transcript
+      console.warn('All backends unavailable, generating notes locally.');
+      return generateNotesLocally(transcriptText, patientInfo);
+    }
   }
 };
 
@@ -265,29 +376,66 @@ export const getNoteById = async (noteId) => {
 export const getDashboardStats = async () => {
   try {
     const [patientsRes, consultationsRes] = await Promise.all([
-      api.get('/patients', { params: { limit: 200, offset: 0 } }),
-      api.get('/consultations', { params: { limit: 200, offset: 0 } }),
+      api.get('/patients', { params: { limit: 1000, offset: 0 } }),
+      api.get('/consultations', { params: { limit: 1000, offset: 0 } }),
     ]);
 
     const patients = patientsRes.data?.patients || [];
     const consultations = consultationsRes.data?.consultations || [];
-    const today = new Date().toISOString().slice(0, 10);
 
-    const consultationsToday = consultations.filter((c) => {
-      if (!c.visit_date) return false;
-      return String(c.visit_date).slice(0, 10) === today;
+    const now = new Date();
+    // Use LOCAL date (not UTC) — MySQL stores dates in server local time (IST),
+    // so comparing UTC date strings always gives wrong "today" count.
+    const toLocalDate = (d) => d.toLocaleDateString('en-CA'); // YYYY-MM-DD in local TZ
+    const today = toLocalDate(now);
+    const weekAgo = toLocalDate(new Date(now - 7 * 86400000));
+
+    // Convert any date value (ISO string or Date) to local YYYY-MM-DD
+    const toDateStr = (val) => {
+      if (!val) return null;
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? String(val).slice(0, 10) : toLocalDate(d);
+    };
+
+    const consultationsToday = consultations.filter((c) => toDateStr(c.visit_date) === today).length;
+    const consultationsThisWeek = consultations.filter((c) => {
+      const d = toDateStr(c.visit_date);
+      return d && d >= weekAgo;
     }).length;
 
-    const totalDuration = consultations.reduce((sum, c) => sum + (Number(c.duration) || 0), 0);
-    const averageDuration = consultations.length
-      ? `${Math.round(totalDuration / consultations.length)} min`
-      : '0 min';
+    const newPatientsThisWeek = patients.filter((p) => {
+      const d = toDateStr(p.created_at);
+      return d && d >= weekAgo;
+    }).length;
+
+    // Follow-ups = this-week consultations for patients who have > 1 total consultation
+    const visitCounts = consultations.reduce((acc, c) => {
+      const k = String(c.patient_id);
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
+    const followUpsThisWeek = consultations.filter((c) => {
+      const d = toDateStr(c.visit_date);
+      return d && d >= weekAgo && visitCounts[String(c.patient_id)] > 1;
+    }).length;
+
+    // Avg consultation time — only from today's sessions that have a real duration
+    const todayConsultations = consultations.filter((c) => toDateStr(c.visit_date) === today);
+    const todayWithDuration = todayConsultations.filter((c) => Number(c.duration) > 0);
+    const averageDuration = todayWithDuration.length
+      ? `${Math.round(todayWithDuration.reduce((s, c) => s + Number(c.duration), 0) / todayWithDuration.length)} min`
+      : todayConsultations.length > 0
+        ? '< 1 min'
+        : '—';
 
     return {
       consultationsToday,
       totalPatients: patients.length,
-      notesGenerated: consultations.length,
+      notesGenerated: consultationsToday,
       averageTime: averageDuration,
+      consultationsThisWeek,
+      newPatientsThisWeek,
+      followUpsThisWeek,
     };
   } catch (error) {
     throw error.response?.data || { message: 'Failed to fetch stats' };
@@ -309,9 +457,13 @@ export const getRecentConsultations = async (limit = 10) => {
         patientName: c.patient_name || 'Unknown Patient',
         diagnosis: c.diagnosis || 'No diagnosis recorded',
         date: c.visit_date,
-        time: c.created_at
-          ? new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          : '--:--',
+        time: (() => {
+          if (!c.created_at) return '--:--';
+          const s = String(c.created_at);
+          const iso = s.includes('T') ? s : s.replace(' ', 'T') + 'Z';
+          const d = new Date(iso);
+          return isNaN(d.getTime()) ? '--:--' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        })(),
       })),
     };
   } catch (error) {
