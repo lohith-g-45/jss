@@ -267,3 +267,7 @@ Doctors can now:
 
 **Dev Server**: http://localhost:5174 (running now!)
 **Status**: ✅ All features implemented and tested
+
+---
+
+Ctrl+Shift+P → "Developer: Reload Window"

@@ -35,35 +35,39 @@ const TranscriptBox = ({ transcript, isRecording, isTranscribing, lang = 'en', c
 
       {/* Live speaker indicator + manual toggle */}
       {isRecording && currentSpeaker && (
-        <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
-          <div className="flex items-center space-x-2">
-            {currentSpeaker === 'Doctor' ? (
-              <Stethoscope size={15} className="text-blue-500" />
-            ) : (
-              <User size={15} className="text-green-500" />
+        <div className="mb-3">
+          <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-gradient-to-r from-blue-50 to-green-50 border-2 border-gray-300">
+            <div className="flex items-center space-x-2">
+              {currentSpeaker === 'Doctor' ? (
+                <Stethoscope size={16} className="text-blue-600" />
+              ) : (
+                <User size={16} className="text-green-600" />
+              )}
+              <span className="text-xs text-gray-600 font-medium">Now speaking:</span>
+              <span className={`text-sm font-bold ${currentSpeaker === 'Doctor' ? 'text-blue-600' : 'text-green-600'}`}>
+                {currentSpeaker}
+              </span>
+              <motion.div
+                animate={{ opacity: [1, 0.4, 1] }}
+                transition={{ duration: 0.9, repeat: Infinity }}
+              >
+                <Volume2 size={14} className={currentSpeaker === 'Doctor' ? 'text-blue-400' : 'text-green-400'} />
+              </motion.div>
+            </div>
+            {onToggleSpeaker && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={onToggleSpeaker}
+                title="Click to switch speaker (Space bar)"
+                className="flex items-center space-x-2 bg-white text-primary hover:bg-primary hover:text-white font-semibold border-2 border-primary px-3 py-1.5 rounded-lg transition-all shadow-sm"
+              >
+                <RefreshCw size={14} />
+                <span className="text-sm">Switch Speaker</span>
+              </motion.button>
             )}
-            <span className="text-xs text-gray-500">Now speaking:</span>
-            <span className={`text-xs font-bold ${currentSpeaker === 'Doctor' ? 'text-blue-600' : 'text-green-600'}`}>
-              {currentSpeaker}
-            </span>
-            <motion.div
-              animate={{ opacity: [1, 0.4, 1] }}
-              transition={{ duration: 0.9, repeat: Infinity }}
-            >
-              <Volume2 size={14} className={currentSpeaker === 'Doctor' ? 'text-blue-400' : 'text-green-400'} />
-            </motion.div>
-            <span className="text-xs text-gray-400">(auto-switches on pause)</span>
           </div>
-          {onToggleSpeaker && (
-            <button
-              onClick={onToggleSpeaker}
-              title="Manually switch speaker"
-              className="flex items-center space-x-1 text-xs text-gray-500 hover:text-primary border border-gray-300 hover:border-primary px-2 py-1 rounded-md transition-colors"
-            >
-              <RefreshCw size={11} />
-              <span>Switch</span>
-            </button>
-          )}
+          <p className="text-xs text-gray-500 text-center mt-1">💡 Tip: Click "Switch Speaker" button when the other person talks, or press Space bar</p>
         </div>
       )}
 
@@ -116,8 +120,8 @@ const TranscriptBox = ({ transcript, isRecording, isTranscribing, lang = 'en', c
       </div>
 
       {isRecording && (
-        <p className="text-xs text-gray-400 mt-2 text-center">
-          After stop, AssemblyAI will finalize Doctor &amp; Patient labels accurately.
+        <p className="text-xs text-gray-500 mt-2 text-center bg-yellow-50 border border-yellow-200 rounded px-2 py-1">
+          ⏱️ <strong>Live Preview Only</strong> - After you stop, AssemblyAI will accurately identify Doctor &amp; Patient throughout the entire conversation.
         </p>
       )}
     </div>

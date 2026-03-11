@@ -25,6 +25,7 @@ router.post('/', async (req, res) => {
       audio: audioBuffer,
       speaker_labels: true,
       speakers_expected: 2,
+      speech_models: ['universal-2'], // Use array format with universal-2 model
     };
 
     // Lock to English unless Kannada — for Kannada let AssemblyAI auto-detect

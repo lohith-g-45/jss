@@ -98,7 +98,7 @@ const StartConsultation = () => {
   });
 
   // Toggle speaker after a pause (or on manual tap)
-  const PAUSE_SWITCH_MS = 1800; // 1.8 s silence → switch speaker
+  const PAUSE_SWITCH_MS = 3000; // 3s silence → auto-switch (increased for better accuracy)
 
   const toggleSpeaker = () => {
     const next = lastSpeakerRef.current === 'Doctor' ? 'Patient' : 'Doctor';
@@ -158,6 +158,23 @@ const StartConsultation = () => {
       }
     };
   }, []);
+
+  // Keyboard shortcut: Space bar to toggle speaker during recording
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      // Only allow space bar toggle when recording and not typing in an input
+      if (e.code === 'Space' && isRecording && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        toggleSpeaker();
+        toast.info(`Switched to ${lastSpeakerRef.current === 'Doctor' ? 'Patient' : 'Doctor'}`, { duration: 1000 });
+      }
+    };
+
+    if (isRecording) {
+      window.addEventListener('keydown', handleKeyPress);
+      return () => window.removeEventListener('keydown', handleKeyPress);
+    }
+  }, [isRecording]);
 
   // Handle form input changes — check returning patient when name/phone/email changes
   const handleFormChange = (e) => {
@@ -384,15 +401,18 @@ const StartConsultation = () => {
 
     // Start microphone recording regardless of WebSocket status
     try {
-      // Disable OS-level noise suppression/echo cancellation so the patient's
-      // far-field voice is not filtered out before AssemblyAI hears it.
+      // Optimized settings for capturing multiple speakers in same room:
+      // - Disable all audio processing that might filter out quieter voices
+      // - Use higher sample rate for better quality
+      // - Allow automatic gain to boost quieter speakers
       mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
-          autoGainControl: false,
+          autoGainControl: true, // Enable to boost quieter speaker
           channelCount: 1,
-          sampleRate: { ideal: 16000 },
+          sampleRate: { ideal: 48000 }, // Higher sample rate for better quality
+          sampleSize: 16,
         },
       });
 
@@ -491,7 +511,9 @@ const StartConsultation = () => {
         }
       };
 
-      mediaRecorderRef.current.start(1200);
+      // Capture audio more frequently (every 500ms) for better continuous recording
+      // This helps AssemblyAI detect speaker changes throughout the conversation
+      mediaRecorderRef.current.start(500);
       setIsRecording(true);
       startTimer();
 
@@ -954,14 +976,16 @@ const StartConsultation = () => {
                           {currentSpeaker}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-500 mt-2">Speaker automatically switches on pauses</p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        💡 Use \"Switch Speaker\" button in transcript or press <kbd className="px-1 py-0.5 bg-white rounded border text-gray-700\">Space</kbd> when speaker changes
+                      </p>
                     </motion.div>
                   )}
 
                   {/* Instructions */}
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 text-center">
                     {isRecording
-                      ? 'Speak clearly. Click the button to stop recording.'
+                      ? '🎙️ Recording... Use the Switch button for accurate speaker labels'
                       : 'Click the microphone to start recording'}
                   </p>
                 </div>
