@@ -30,11 +30,8 @@ npm run dev
 ### 4. Open in Browser
 Navigate to: `http://localhost:5173`
 
-### 5. Login with Demo Credentials
-```
-Email: sarah.johnson@hospital.com
-Password: password123
-```
+### 5. Sign In
+Use an existing doctor account, or create one from the Register page.
 
 ## 🎯 What to Try First
 
@@ -290,7 +287,7 @@ netlify deploy --prod
 
 After setup, verify:
 - [ ] Dev server starts without errors
-- [ ] Can login with demo credentials
+- [ ] Can sign in with a registered doctor account
 - [ ] Dashboard loads with statistics
 - [ ] Can navigate between pages
 - [ ] Microphone can be accessed

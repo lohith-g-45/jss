@@ -1069,18 +1069,6 @@ const StartConsultation = () => {
                   onToggleSpeaker={isRecording ? toggleSpeaker : undefined}
                 />
 
-                {/* Diarizing overlay */}
-                {isDiarizing && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="flex items-center space-x-3 bg-purple-50 border border-purple-200 rounded-lg px-4 py-3 text-purple-700 text-sm"
-                  >
-                    <Loading size="sm" />
-                    <span>AssemblyAI is identifying Doctor and Patient voices… please wait.</span>
-                  </motion.div>
-                )}
-
                 {/* Transcribing overlay */}
                 {isTranscribing && (
                   <motion.div

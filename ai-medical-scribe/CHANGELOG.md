@@ -188,9 +188,7 @@ npm install
 npm run dev
 ```
 
-Login credentials:
-- Email: sarah.johnson@hospital.com
-- Password: password123
+Sign in with an existing doctor account, or create one from the Register page.
 
 ### 🔮 Future Enhancements
 

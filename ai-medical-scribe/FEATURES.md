@@ -19,7 +19,7 @@
 - Email and password authentication
 - "Remember me" functionality
 - Forgot password link (UI ready)
-- Demo credentials provided for testing
+- Use registered doctor accounts for access
 - Protected routes requiring authentication
 - JWT token storage in localStorage
 - Automatic redirect to dashboard after login

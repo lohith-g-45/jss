@@ -71,13 +71,14 @@ CREATE TABLE IF NOT EXISTS prescriptions (
     INDEX idx_consultation_id (consultation_id)
 );
 
--- Insert Demo Doctor User (password: password123)
+-- Insert seeded doctor user for sample consultation ownership.
+-- This account is not intended for interactive login.
 INSERT INTO users (name, email, password, role, specialization)
 VALUES (
     'Dr. Sarah Johnson',
-    'sarah.johnson@hospital.com',
-    '$2a$10$8K1p/a0dL3.I9/YvNQe5U.O7l3eNFRN1CXP7.cC5GI7Z9cJ2QW5xC',
-    'doctor',       
+    'seeded-doctor@medicalscribe.invalid',
+    '$2a$10$p8DW8KO5Yi2//CNh8OcCFuAEdiXrqO1JmBhmBFznb/WXP49fxoLxC',
+    'doctor',
     'Internal Medicine'
 );
 

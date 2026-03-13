@@ -148,7 +148,7 @@ recognitionRef.current.onresult = (event) => {
 Test the new features:
 
 1. ✅ Open http://localhost:5174 (or 5173)
-2. ✅ Login with demo credentials
+2. ✅ Sign in with a registered doctor account
 3. ✅ Navigate to "Start Consultation"
 4. ✅ Try submitting empty form (should show validation errors)
 5. ✅ Fill all required fields correctly

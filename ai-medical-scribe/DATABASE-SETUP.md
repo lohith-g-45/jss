@@ -132,8 +132,7 @@ npm run dev
 ```
 
 3. **Login to the app:**
-   - Email: `sarah.johnson@hospital.com`
-   - Password: `password123`
+   - Use an existing doctor account, or create one from the Register page
 
 4. **Test patient search and consultation saving**
 
@@ -270,7 +269,7 @@ Should return:
 ```cmd
 curl -X POST http://localhost:5000/api/auth/login ^
   -H "Content-Type: application/json" ^
-  -d "{\"email\":\"sarah.johnson@hospital.com\",\"password\":\"password123\"}"
+   -d "{\"email\":\"your-doctor-email@example.com\",\"password\":\"your-password\"}"
 ```
 
 ### Test Patient Search:

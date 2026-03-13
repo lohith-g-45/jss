@@ -127,11 +127,9 @@ ai-medical-scribe/
 5. **Open your browser**
    Navigate to `http://localhost:5173`
 
-### Demo Credentials
+### Account Access
 
-For testing purposes, use these credentials:
-- **Email**: `sarah.johnson@hospital.com`
-- **Password**: `password123`
+Sign in with an existing doctor account, or create one from the Register page before using the app.
 
 ## 📦 Build for Production
 
