@@ -15,6 +15,13 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
 # ─────────────────────────────────────────────
 # Data Classes
 # ─────────────────────────────────────────────
@@ -120,7 +127,15 @@ class WhisperEngine:
 # ─────────────────────────────────────────────
 
 class TranslationEngine:
-    def __init__(self):
+    def __init__(self, enabled: Optional[bool] = None):
+        if enabled is None:
+            enabled = env_bool("ENABLE_TRANSLATION_MODEL", default=False)
+
+        self.translator = None
+        if not enabled:
+            logger.info("Translation model disabled (ENABLE_TRANSLATION_MODEL=false).")
+            return
+
         logger.info("Loading translation model...")
         try:
             from transformers import pipeline as hf_pipeline
@@ -132,7 +147,6 @@ class TranslationEngine:
             logger.info("✅ Translation model loaded")
         except Exception as e:
             logger.warning(f"Translation model failed to load: {e}. Will pass through text.")
-            self.translator = None
 
     def translate(self, text: str, source_lang: str) -> str:
         if not text.strip():
@@ -178,17 +192,25 @@ ICD10_MAP = {
 }
 
 class MedicalNER:
-    def __init__(self):
+    def __init__(self, prefer_scispacy: Optional[bool] = None):
+        if prefer_scispacy is None:
+            prefer_scispacy = env_bool("ENABLE_SCISPACY_MODEL", default=False)
+
         logger.info("Loading Medical NER...")
         self.nlp = None
         try:
             import spacy
-            try:
-                self.nlp = spacy.load("en_core_sci_sm")
-                logger.info("✅ scispaCy loaded")
-            except Exception:
+
+            if prefer_scispacy:
+                try:
+                    self.nlp = spacy.load("en_core_sci_sm")
+                    logger.info("✅ scispaCy loaded")
+                except Exception:
+                    self.nlp = spacy.load("en_core_web_sm")
+                    logger.info("✅ spaCy en_core_web_sm loaded (fallback)")
+            else:
                 self.nlp = spacy.load("en_core_web_sm")
-                logger.info("✅ spaCy en_core_web_sm loaded (fallback)")
+                logger.info("✅ spaCy en_core_web_sm loaded")
         except Exception as e:
             logger.warning(f"spaCy load failed: {e}. Using keyword NER fallback.")
 
@@ -375,11 +397,25 @@ class SpeakerClassifier:
 # ─────────────────────────────────────────────
 
 class MedicalPipeline:
-    def __init__(self, whisper_model_size: str = "base"):
+    def __init__(self, whisper_model_size: str = "tiny", low_memory_mode: Optional[bool] = None):
+        if low_memory_mode is None:
+            low_memory_mode = env_bool("LOW_MEMORY_MODE", default=False)
+
+        # On small instances, force the smallest Whisper model to avoid OOM.
+        if low_memory_mode and whisper_model_size != "tiny":
+            logger.warning(
+                "LOW_MEMORY_MODE enabled, overriding WHISPER_MODEL=%s to tiny",
+                whisper_model_size,
+            )
+            whisper_model_size = "tiny"
+
+        translation_enabled = env_bool("ENABLE_TRANSLATION_MODEL", default=not low_memory_mode)
+        scispacy_enabled = env_bool("ENABLE_SCISPACY_MODEL", default=not low_memory_mode)
+
         logger.info("Initializing Medical Pipeline...")
         self.whisper = WhisperEngine(whisper_model_size)
-        self.translator = TranslationEngine()
-        self.ner = MedicalNER()
+        self.translator = TranslationEngine(enabled=translation_enabled)
+        self.ner = MedicalNER(prefer_scispacy=scispacy_enabled)
         self.ehr = EHRFormatter()
         self.classifier = SpeakerClassifier()
         self.specialty_classifier = SpecialtyClassifier()  # NEW: Specialty prediction

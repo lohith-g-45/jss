@@ -18,7 +18,7 @@ cp .env.example .env
 Edit `.env` and add your Groq API key:
 ```env
 GROQ_API_KEY=your_actual_groq_api_key_here
-WHISPER_MODEL=base
+WHISPER_MODEL=tiny
 JWT_SECRET=your_super_secret_jwt_key_change_this_in_production
 ```
 
@@ -137,7 +137,10 @@ backend/
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `GROQ_API_KEY` | Groq API key for insights | Required |
-| `WHISPER_MODEL` | Whisper model size | `base` |
+| `WHISPER_MODEL` | Whisper model size | `tiny` |
+| `LOW_MEMORY_MODE` | Enables Render-friendly lightweight startup profile | `true` on Render |
+| `ENABLE_TRANSLATION_MODEL` | Load local HuggingFace translation model | `false` in low-memory mode |
+| `ENABLE_SCISPACY_MODEL` | Prefer heavy `en_core_sci_sm` model over lightweight spaCy fallback | `false` in low-memory mode |
 | `PORT` | Server port | `8000` |
 | `JWT_SECRET` | JWT secret (match Node.js) | Required if using auth |
 

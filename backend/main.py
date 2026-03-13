@@ -32,6 +32,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
 # ─────────────────────────────────────────────
 # App
 # ─────────────────────────────────────────────
@@ -75,9 +82,24 @@ insights_engine: Optional[InsightsEngine] = None
 async def startup():
     global pipeline, insights_engine
     logger.info("🚀 Starting Medical-Scribe backend...")
-    whisper_model = os.getenv("WHISPER_MODEL", "base")
-    pipeline = MedicalPipeline(whisper_model_size=whisper_model)
+
+    render_runtime = any(
+        os.getenv(key)
+        for key in ("RENDER", "RENDER_SERVICE_ID", "RENDER_EXTERNAL_URL")
+    )
+    low_memory_mode = env_bool("LOW_MEMORY_MODE", default=render_runtime)
+
+    whisper_model = os.getenv("WHISPER_MODEL", "tiny")
+    pipeline = MedicalPipeline(
+        whisper_model_size=whisper_model,
+        low_memory_mode=low_memory_mode,
+    )
     insights_engine = InsightsEngine()
+    logger.info(
+        "✅ Backend runtime profile: low_memory_mode=%s, WHISPER_MODEL=%s",
+        low_memory_mode,
+        whisper_model,
+    )
     logger.info("✅ Backend ready")
 
 # ─────────────────────────────────────────────
@@ -104,13 +126,17 @@ async def verify_token(authorization: str = Header(None)):
 
 @app.get("/api/health")
 async def health_check():
+    translation_ready = bool(
+        pipeline and getattr(getattr(pipeline, "translator", None), "translator", None)
+    )
+
     return {
         "status": "healthy",
         "version": "2.0.0",
         "timestamp": datetime.utcnow().isoformat(),
-        "whisper": pipeline is not None,
-        "translation": True,
-        "ner": True,
+        "whisper": bool(pipeline and getattr(pipeline, "whisper", None)),
+        "translation": translation_ready,
+        "ner": bool(pipeline and getattr(pipeline, "ner", None)),
         "insights_groq": insights_engine is not None
     }
 
