@@ -41,14 +41,25 @@ app = FastAPI(
     description="AI-powered clinical documentation backend"
 )
 
+# Merge default local origins with comma-separated CORS_ORIGIN env values.
+default_allowed_origins = [
+    "http://localhost:5173",  # React dev server
+    "http://localhost:5174",  # React dev server (alt)
+    "http://localhost:5000",  # Node.js API
+]
+
+env_allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGIN", "").split(",")
+    if origin.strip()
+]
+
+allowed_origins = list(dict.fromkeys(default_allowed_origins + env_allowed_origins))
+
 # Configure CORS for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # React dev server
-        "http://localhost:5174",  # React dev server (alt)
-        "http://localhost:5000",  # Node.js API
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
