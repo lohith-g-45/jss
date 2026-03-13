@@ -84,6 +84,22 @@ export const searchPatients = async (query) => {
   }
 };
 
+export const resolveExistingPatient = async ({ patientId, name, phone, email }) => {
+  try {
+    const response = await api.get('/patients/resolve', {
+      params: {
+        patient_id: patientId || undefined,
+        name: name || undefined,
+        phone: phone || undefined,
+        email: email || undefined,
+      },
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { error: 'Failed to resolve existing patient' };
+  }
+};
+
 export const getPatientById = async (patientId) => {
   try {
     const response = await api.get(`/patients/${patientId}`);
@@ -284,6 +300,7 @@ const generateNotesLocally = (transcriptText, patientInfo = {}) => {
     doctorLines.slice(-1)[0] ||
     'Treatment plan to be determined.';
 
+
   return {
     transcript: transcriptText,
     soap_notes: {
@@ -345,7 +362,7 @@ export const regenerateNotes = async (transcript) => {
   return {
     chiefComplaint: result?.soap_notes?.chief_complaint || '',
     historyOfPresentIllness: result?.soap_notes?.history || '',
-    pastMedicalHistory: '',
+    pastMedicalHistory: result?.soap_notes?.past_medical_history || '',
     assessment: result?.soap_notes?.assessment || '',
     plan: result?.soap_notes?.plan || '',
   };
@@ -419,13 +436,26 @@ export const getDashboardStats = async () => {
       return d && d >= weekAgo && visitCounts[String(c.patient_id)] > 1;
     }).length;
 
-    // Avg consultation time — only from today's sessions that have a real duration
+    const estimateDurationFromTranscript = (text) => {
+      const words = String(text || '').trim().split(/\s+/).filter(Boolean).length;
+      if (!words) return null;
+      return Number((words / 130).toFixed(1));
+    };
+
+    // Avg consultation time — derive from explicit duration first, fallback to transcript estimate
     const todayConsultations = consultations.filter((c) => toDateStr(c.visit_date) === today);
-    const todayWithDuration = todayConsultations.filter((c) => Number(c.duration) > 0);
-    const averageDuration = todayWithDuration.length
-      ? `${Math.round(todayWithDuration.reduce((s, c) => s + Number(c.duration), 0) / todayWithDuration.length)} min`
+    const durationSamples = todayConsultations
+      .map((c) => {
+        const explicit = Number(c.duration);
+        if (explicit > 0) return explicit;
+        return estimateDurationFromTranscript(c.transcript);
+      })
+      .filter((v) => Number(v) > 0);
+
+    const averageDuration = durationSamples.length
+      ? `${(durationSamples.reduce((s, v) => s + Number(v), 0) / durationSamples.length).toFixed(1)} min`
       : todayConsultations.length > 0
-        ? '< 1 min'
+        ? '0.5 min'
         : '—';
 
     return {

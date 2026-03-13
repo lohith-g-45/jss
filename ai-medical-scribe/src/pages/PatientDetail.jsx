@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Mail, Phone, MapPin, Calendar, Trash2, Pencil, Check, X, Download } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, MapPin, Calendar, Trash2, Pencil, Check, X, Download, Activity } from 'lucide-react';
 import Header from '../components/layout/Header';
 import SOAPEditor from '../components/SOAPEditor';
 import Modal from '../components/Modal';
@@ -10,6 +10,7 @@ import { getPatientById, deletePatient, updatePatient } from '../services/api';
 import { generateConsultationPDF } from '../utils/pdfGenerator';
 import { formatDate } from '../utils/helpers';
 import { useToast } from '../components/Toast';
+import { detectSurgeryContext } from '../utils/surgeryVideos';
 
 const PatientDetail = () => {
   const { id } = useParams();
@@ -143,6 +144,27 @@ const PatientDetail = () => {
       setIsSaving(false);
     }
   };
+
+  const handleView3D = (consultation) => {
+    navigate('/visualization', {
+      state: {
+        notes: consultation.notes,
+        transcript: consultation.transcript,
+        patientInfo: {
+          patientName: patient.name,
+          age: patient.age,
+          gender: patient.gender,
+          phone: patient.phone,
+          email: patient.email,
+          address: patient.address,
+          dateOfVisit: consultation.date,
+        },
+      },
+    });
+  };
+
+  const hasSurgery = (consultation) =>
+    detectSurgeryContext(consultation?.notes, consultation?.transcript).hasSurgery;
 
   const handleDownloadPDF = (consultation) => {
     generateConsultationPDF({
@@ -427,6 +449,15 @@ const PatientDetail = () => {
                         <Download size={15} />
                         <span>Download PDF</span>
                       </button>
+                      {hasSurgery(consultation) && (
+                        <button
+                          onClick={() => handleView3D(consultation)}
+                          className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors text-sm"
+                        >
+                          <Activity size={15} />
+                          <span>Surgery Visualization</span>
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 ))}
@@ -445,7 +476,16 @@ const PatientDetail = () => {
       >
         {selectedConsultation && (
           <div className="space-y-6">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-3">
+              {hasSurgery(selectedConsultation) && (
+                <button
+                  onClick={() => handleView3D(selectedConsultation)}
+                  className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors text-sm"
+                >
+                  <Activity size={15} />
+                  <span>Surgery Visualization</span>
+                </button>
+              )}
               <button
                 onClick={() => handleDownloadPDF(selectedConsultation)}
                 className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors text-sm"

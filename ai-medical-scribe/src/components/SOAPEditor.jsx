@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Save, RefreshCw, Edit2 } from 'lucide-react';
 
@@ -20,6 +20,12 @@ const SOAPEditor = ({ initialNotes, onSave, onRegenerate, isEditable = true }) =
     { key: 'assessment', label: 'Assessment', rows: 5 },
     { key: 'plan', label: 'Plan', rows: 5 },
   ];
+
+  useEffect(() => {
+    if (initialNotes) {
+      setNotes((prev) => ({ ...prev, ...initialNotes }));
+    }
+  }, [initialNotes]);
 
   const handleChange = (key, value) => {
     setNotes(prev => ({ ...prev, [key]: value }));

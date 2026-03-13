@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Users, FileText, Activity, Plus, Calendar } from 'lucide-react';
+import { Users, FileText, Activity, Mic, Calendar } from 'lucide-react';
 import Header from '../components/layout/Header';
 import StatCard from '../components/StatCard';
 import Loading from '../components/Loading';
@@ -168,7 +168,7 @@ const Dashboard = () => {
             >
               <div className="flex items-center justify-center mb-4">
                 <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                  <Plus size={32} />
+                  <Mic size={30} className="text-blue-700" />
                 </div>
               </div>
               <h3 className="text-xl font-bold text-center mb-2">

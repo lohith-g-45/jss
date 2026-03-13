@@ -13,6 +13,7 @@ import GeneratedNotes from './pages/GeneratedNotes';
 import PatientRecords from './pages/PatientRecords';
 import PatientDetail from './pages/PatientDetail';
 import Settings from './pages/Settings';
+import BodyVisualization from './pages/BodyVisualization';
 
 console.log('App.jsx loaded');
 
@@ -56,6 +57,16 @@ function App() {
           <Route path="patients/:id" element={<PatientDetail />} />
           <Route path="settings" element={<Settings />} />
         </Route>
+
+        {/* Full-screen pages (protected, no sidebar) */}
+        <Route
+          path="/visualization"
+          element={
+            <ProtectedRoute>
+              <BodyVisualization />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Catch all - redirect to dashboard */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

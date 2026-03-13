@@ -6,7 +6,7 @@ import Header from '../components/layout/Header';
 import TranscriptBox from '../components/TranscriptBox';
 import ConsultationReport from '../components/ConsultationReport';
 import { useAppContext } from '../context/AppContext';
-import { createPatient, generateNotes, uploadAudio, saveConsultation, searchPatients, transcribeAudio, diarizeAudio } from '../services/api';
+import { createPatient, generateNotes, uploadAudio, saveConsultation, transcribeAudio, diarizeAudio, resolveExistingPatient } from '../services/api';
 import { useToast } from '../components/Toast';
 import Loading from '../components/Loading';
 
@@ -34,6 +34,7 @@ const StartConsultation = () => {
 
   // Patient form state
   const [formData, setFormData] = useState({
+    patientId: '',
     patientName: '',
     age: '',
     gender: '',
@@ -50,6 +51,8 @@ const StartConsultation = () => {
   // Returning patient detection
   const [returningPatient, setReturningPatient] = useState(null); // existing patient from DB
   const [showReturningBanner, setShowReturningBanner] = useState(false);
+  const [isCheckingExistingPatient, setIsCheckingExistingPatient] = useState(false);
+  const lookupSeqRef = useRef(0);
 
   // Recording/transcription state
   const [hasRecorded, setHasRecorded] = useState(false);
@@ -176,37 +179,84 @@ const StartConsultation = () => {
     }
   }, [isRecording]);
 
-  // Handle form input changes — check returning patient when name/phone/email changes
+  const normalizeDigits = (val) => String(val || '').replace(/\D/g, '');
+
+  const applyReturningPatient = (p, matchedBy = 'record') => {
+    setReturningPatient(p);
+    setShowReturningBanner(true);
+    setFormData((prev) => ({
+      ...prev,
+      patientId: String(p.id || prev.patientId || ''),
+      patientName: p.patient_name || prev.patientName,
+      age: prev.age || p.age || '',
+      gender: prev.gender || p.gender || '',
+      phone: p.phone || prev.phone || '',
+      email: p.email || prev.email || '',
+      address: p.address || prev.address || '',
+    }));
+    return matchedBy;
+  };
+
+  const lookupExistingPatient = async (data, { silent = true } = {}) => {
+    const name = data?.patientName?.trim();
+    const phone = normalizeDigits(data?.phone);
+    const email = String(data?.email || '').trim().toLowerCase();
+    const patientId = String(data?.patientId || '').trim();
+
+    if (!patientId && !phone && !email) {
+      setReturningPatient(null);
+      setShowReturningBanner(false);
+      return null;
+    }
+
+    const seq = ++lookupSeqRef.current;
+    if (!silent) setIsCheckingExistingPatient(true);
+
+    try {
+      const resolved = await resolveExistingPatient({ patientId, name, phone, email });
+      if (seq !== lookupSeqRef.current) return null;
+
+      const found = resolved?.patient || null;
+      if (found) {
+        applyReturningPatient(found, resolved?.matchedBy || 'record');
+      } else {
+        setReturningPatient(null);
+        setShowReturningBanner(false);
+      }
+      return found;
+    } catch (_) {
+      return null;
+    } finally {
+      if (!silent && seq === lookupSeqRef.current) setIsCheckingExistingPatient(false);
+    }
+  };
+
+  // Handle form input changes
   const handleFormChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     setFormErrors((prev) => ({ ...prev, [name]: '' }));
-    // Hide returning banner if user edits the form
-    setShowReturningBanner(false);
-    setReturningPatient(null);
   };
 
-  // Check if this is a returning patient after name is filled
-  const checkReturningPatient = async () => {
-    const name = formData.patientName.trim();
-    const phone = formData.phone.trim();
-    const email = formData.email.trim();
-    if (!name || (!phone && !email)) return;
+  // Debounced existing patient detection while typing
+  useEffect(() => {
+    const hasLookupInput =
+      String(formData.patientId || '').trim() ||
+      normalizeDigits(formData.phone).length >= 7 ||
+      String(formData.email || '').trim().length >= 5;
 
-    try {
-      const res = await searchPatients(name);
-      const matches = (res?.patients || []).filter((p) => {
-        const nameMatch = p.patient_name?.toLowerCase() === name.toLowerCase();
-        const phoneMatch = phone && p.phone && p.phone.replace(/\D/g, '') === phone.replace(/\D/g, '');
-        const emailMatch = email && p.email && p.email.toLowerCase() === email.toLowerCase();
-        return nameMatch && (phoneMatch || emailMatch);
-      });
-      if (matches.length > 0) {
-        setReturningPatient(matches[0]);
-        setShowReturningBanner(true);
-      }
-    } catch (_) {}
-  };
+    if (!hasLookupInput) {
+      setReturningPatient(null);
+      setShowReturningBanner(false);
+      return;
+    }
+
+    const t = setTimeout(() => {
+      lookupExistingPatient(formData, { silent: true });
+    }, 350);
+
+    return () => clearTimeout(t);
+  }, [formData.patientId, formData.phone, formData.email, formData.patientName]);
 
   // Validate patient form
   const validateForm = () => {
@@ -247,8 +297,9 @@ const StartConsultation = () => {
       return;
     }
 
-    // If user confirmed an existing patient, use that record
-    if (showReturningBanner && returningPatient) {
+    // Always do one final lookup on submit so existing patients are never duplicated.
+    const resolvedPatient = await lookupExistingPatient(formData, { silent: false });
+    if (resolvedPatient) {
       handleContinueReturning();
       return;
     }
@@ -656,6 +707,20 @@ const StartConsultation = () => {
                   {/* Patient Name */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Patient ID (if existing)
+                    </label>
+                    <input
+                      type="text"
+                      name="patientId"
+                      value={formData.patientId}
+                      onChange={handleFormChange}
+                      className="input-field"
+                      placeholder="Enter patient ID to fetch existing record"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Patient Name <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -785,6 +850,10 @@ const StartConsultation = () => {
                     </div>
                   )}
 
+                  {isCheckingExistingPatient && (
+                    <div className="text-xs text-gray-500">Checking existing patient record...</div>
+                  )}
+
                   {/* Date of Visit */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -804,7 +873,7 @@ const StartConsultation = () => {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     type="submit"
-                    onMouseLeave={checkReturningPatient}
+                    disabled={isCheckingExistingPatient}
                     className="w-full btn-primary flex items-center justify-center space-x-2"
                   >
                     <span>Continue to Consultation</span>

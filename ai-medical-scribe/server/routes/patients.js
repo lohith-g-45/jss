@@ -32,6 +32,66 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Resolve existing patient by ID or exact phone/email (optionally with name match)
+router.get('/resolve', async (req, res) => {
+  try {
+    const { patient_id, phone, email, name } = req.query;
+
+    if (patient_id) {
+      const [byId] = await db.query(
+        'SELECT * FROM patients WHERE id = ? LIMIT 1',
+        [parseInt(patient_id)]
+      );
+      return res.json({ success: true, patient: byId[0] || null, matchedBy: byId[0] ? 'id' : null });
+    }
+
+    const normalizedPhone = String(phone || '').replace(/\D/g, '');
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedName = String(name || '').trim().toLowerCase();
+
+    if (!normalizedPhone && !normalizedEmail) {
+      return res.json({ success: true, patient: null, matchedBy: null });
+    }
+
+    const where = [];
+    const params = [];
+
+    if (normalizedPhone) {
+      where.push('REPLACE(REPLACE(REPLACE(REPLACE(phone, " ", ""), "-", ""), "(", ""), ")", "") = ?');
+      params.push(normalizedPhone);
+    }
+
+    if (normalizedEmail) {
+      where.push('LOWER(email) = ?');
+      params.push(normalizedEmail);
+    }
+
+    const [rows] = await db.query(
+      `SELECT * FROM patients WHERE ${where.join(' OR ')} ORDER BY id DESC LIMIT 20`,
+      params
+    );
+
+    if (!rows.length) {
+      return res.json({ success: true, patient: null, matchedBy: null });
+    }
+
+    let selected = rows[0];
+    if (normalizedName) {
+      const exactName = rows.find((r) => String(r.patient_name || '').trim().toLowerCase() === normalizedName);
+      if (exactName) selected = exactName;
+    }
+
+    let matchedBy = 'contact';
+    if (normalizedPhone && String(selected.phone || '').replace(/\D/g, '') === normalizedPhone) matchedBy = 'phone';
+    if (normalizedEmail && String(selected.email || '').trim().toLowerCase() === normalizedEmail) matchedBy = matchedBy === 'phone' ? 'phone+email' : 'email';
+
+    res.json({ success: true, patient: selected, matchedBy });
+  } catch (error) {
+    console.error('Resolve patient error:', error);
+    res.status(500).json({ error: 'Error resolving patient' });
+  }
+});
+
 // Get patient by ID with consultation history
 router.get('/:id', async (req, res) => {
   try {

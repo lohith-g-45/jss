@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Save, Download } from 'lucide-react';
+import { Save, Download, Activity } from 'lucide-react';
 import Header from '../components/layout/Header';
 import SOAPEditor from '../components/SOAPEditor';
 import ConsultationReport from '../components/ConsultationReport';
@@ -9,6 +9,7 @@ import { useAppContext } from '../context/AppContext';
 import { regenerateNotes, saveConsultation } from '../services/api';
 import { useToast } from '../components/Toast';
 import { generateConsultationPDF } from '../utils/pdfGenerator';
+import { detectSurgeryContext } from '../utils/surgeryVideos';
 
 const GeneratedNotes = () => {
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ const GeneratedNotes = () => {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const surgery = detectSurgeryContext(generatedNotes, transcript);
 
   useEffect(() => {
     if (!generatedNotes) {
@@ -24,12 +26,29 @@ const GeneratedNotes = () => {
     }
   }, [generatedNotes, navigate]);
 
+  const estimateDurationFromTranscript = (text) => {
+    const words = String(text || '').trim().split(/\s+/).filter(Boolean).length;
+    if (!words) return null;
+    // Clinical conversation pace approximation: 130 words/min
+    const est = words / 130;
+    return Number(est.toFixed(1));
+  };
+
   const handleSaveNotes = async (notes) => {
     setIsSaving(true);
     try {
       toast.info('Saving notes...');
 
       const consultationTime = notes?._consultationStartTime || patientInfo?.dateOfVisit || new Date().toISOString().slice(0, 10);
+
+      const derivedDuration = (() => {
+        if (recordingTime > 0) {
+          return Number((recordingTime / 60).toFixed(1));
+        }
+        const est = estimateDurationFromTranscript(transcript);
+        if (est && est > 0) return est;
+        return null;
+      })();
 
       const payload = {
         patient_id: patientInfo?.id,
@@ -44,8 +63,8 @@ const GeneratedNotes = () => {
         medications: notes?.pastMedicalHistory || '',
         follow_up: 'As advised by doctor',
         status: 'completed',
-        // Use actual recording duration in minutes; fall back to 1 min minimum
-        duration: recordingTime > 0 ? Math.max(1, Math.round(recordingTime / 60)) : null,
+        // Store live duration in minutes (supports decimals like 5.2)
+        duration: derivedDuration,
       };
 
       if (!payload.patient_id || !payload.doctor_id) {
@@ -171,6 +190,18 @@ const GeneratedNotes = () => {
               <Download size={18} />
               <span>Download PDF Report</span>
             </motion.button>
+
+            {surgery.hasSurgery && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => navigate('/visualization')}
+                className="flex items-center space-x-2 px-5 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 font-medium transition-colors"
+              >
+                <Activity size={18} />
+                <span>Surgery Visualization</span>
+              </motion.button>
+            )}
 
             {!saved && (
               <motion.button
