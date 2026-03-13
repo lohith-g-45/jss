@@ -77,7 +77,7 @@ VALUES (
     'Dr. Sarah Johnson',
     'sarah.johnson@hospital.com',
     '$2a$10$8K1p/a0dL3.I9/YvNQe5U.O7l3eNFRN1CXP7.cC5GI7Z9cJ2QW5xC',
-    'doctor',
+    'doctor',       
     'Internal Medicine'
 );
 
