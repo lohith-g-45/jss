@@ -14,6 +14,53 @@ const aiApi = axios.create({
   baseURL: AI_API_BASE_URL,
 });
 
+const LOCAL_USERS_KEY = 'ms_local_users';
+const FALLBACK_DEMO_USER = {
+  id: 1,
+  name: 'Demo Doctor',
+  email: 'doctor@mediscribe.ai',
+  password: 'doctor123',
+  specialization: 'General Medicine',
+};
+
+const loadLocalUsers = () => {
+  try {
+    const raw = localStorage.getItem(LOCAL_USERS_KEY);
+    if (!raw) {
+      return [FALLBACK_DEMO_USER];
+    }
+
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : [FALLBACK_DEMO_USER];
+  } catch {
+    return [FALLBACK_DEMO_USER];
+  }
+};
+
+const saveLocalUsers = (users) => {
+  localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
+};
+
+const createLocalToken = (user) => {
+  const payload = {
+    id: user.id,
+    email: user.email,
+    ts: Date.now(),
+    mode: 'frontend-only',
+  };
+
+  return btoa(JSON.stringify(payload));
+};
+
+const canUseLocalFallback = (error) => !error?.response;
+
+const sanitizeUser = (user) => ({
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  specialization: user.specialization || '',
+});
+
 // Add auth token to requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
@@ -44,7 +91,29 @@ export const login = async (email, password) => {
     }
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Login failed' };
+    if (!canUseLocalFallback(error)) {
+      throw error.response?.data || { error: 'Login failed' };
+    }
+
+    const users = loadLocalUsers();
+    const found = users.find(
+      (user) =>
+        String(user.email || '').toLowerCase() === String(email || '').toLowerCase() &&
+        user.password === password
+    );
+
+    if (!found) {
+      throw { error: 'Invalid email or password' };
+    }
+
+    const token = createLocalToken(found);
+    localStorage.setItem('token', token);
+
+    return {
+      token,
+      user: sanitizeUser(found),
+      source: 'local-fallback',
+    };
   }
 };
 
@@ -56,7 +125,40 @@ export const register = async (userData) => {
     }
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Registration failed' };
+    if (!canUseLocalFallback(error)) {
+      throw error.response?.data || { error: 'Registration failed' };
+    }
+
+    const users = loadLocalUsers();
+    const normalizedEmail = String(userData?.email || '').toLowerCase();
+    const exists = users.some(
+      (user) => String(user.email || '').toLowerCase() === normalizedEmail
+    );
+
+    if (exists) {
+      throw { error: 'Email is already registered' };
+    }
+
+    const newUser = {
+      id: Date.now(),
+      name: userData?.name || 'Doctor',
+      email: userData?.email || '',
+      password: userData?.password || '',
+      specialization: userData?.specialization || '',
+    };
+
+    users.push(newUser);
+    saveLocalUsers(users);
+
+    const token = createLocalToken(newUser);
+    localStorage.setItem('token', token);
+
+    return {
+      token,
+      user: sanitizeUser(newUser),
+      message: 'Registration successful',
+      source: 'local-fallback',
+    };
   }
 };
 
